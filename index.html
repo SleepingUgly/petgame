@@ -190,7 +190,7 @@
             position: relative;
             width: 100%;
             aspect-ratio: 464 / 688;
-            background: #111827;
+            background: linear-gradient(180deg, #2b1747 0%, #1e1133 100%);
             border-radius: 18px;
             overflow: hidden;
             display: flex;
@@ -206,7 +206,7 @@
             object-fit: contain;
             display: block;
             border-radius: 18px;
-            background: #111827;
+            background: transparent;
         }
 
         /* 右卡：狀態儀表板與按鈕 */
@@ -584,13 +584,23 @@
         }
 
         function showVideoMode() {
-            if (imagePlayer) imagePlayer.style.display = 'none';
-            if (video) video.style.display = 'block';
+            if (video) {
+                video.style.display = 'block';
+            }
+            if (imagePlayer && video) {
+                // 等視訊真正開始播放有畫面時再隱藏照片，確保切換時畫面無縫接軌，絕不閃黑屏！
+                const hideImageOnce = () => {
+                    if (video && video.style.display === 'block') {
+                        imagePlayer.style.display = 'none';
+                    }
+                };
+                video.addEventListener('playing', hideImageOnce, { once: true });
+            }
         }
 
         function showImageMode(src) {
             if (video) {
-                video.pause();
+                try { video.pause(); } catch (e) {}
                 video.style.display = 'none';
             }
             if (imagePlayer) {
@@ -836,7 +846,7 @@
         // 動作影片播放完畢後的平滑結尾切換
         function finishAction() {
             if (!isActionPlaying) return;
-            // 延遲 350ms 緩衝，確保最後一個動作畫格被完整觀看，避免視覺突兀截斷
+            // 延遲 300ms 緩衝，確保最後一個動作畫格被完整觀看，避免視覺突兀截斷
             setTimeout(() => {
                 isActionPlaying = false;
                 activeActionBtn = null;
@@ -848,11 +858,19 @@
                 if (idle.type === 'video') {
                     showVideoMode();
                     if (video) {
-                        video.muted = isPetMuted;
-                        video.volume = isPetMuted ? 0 : 1.0;
+                        // 待機影片（睡覺/休息）屬於環境氛圍，設定 muted=true 確保 100% 繞過瀏覽器非使用者手勢自動播放限制，永不黑屏！
+                        video.muted = true;
+                        video.volume = 0;
+                        video.loop = true; // 待機影片循環播放，讓狗狗持續活靈活現（呼吸、睡覺）
                         video.src = encodeURI(idle.src);
-                        video.loop = false; // 播完一次後靜止停留於最後一格畫面，不循環
-                        video.play().catch(e => console.log('待機播放失敗:', e));
+                        video.load();
+                        const p = video.play();
+                        if (p !== undefined) {
+                            p.catch(err => {
+                                console.warn('待機影片播放受阻，降級為待機照片保護:', err);
+                                showImageMode('dogstand.png');
+                            });
+                        }
                     }
                 } else {
                     // 圖一照片模式
@@ -862,7 +880,7 @@
                 if (thoughtBubble) {
                     thoughtBubble.innerText = idle.msg;
                 }
-            }, 350);
+            }, 300);
         }
 
         // 點擊 9 顆互動按鈕時執行的動作函式
@@ -930,16 +948,26 @@
                 video.volume = isPetMuted ? 0 : 1.0;
                 const nextSrc = getNextVideo(action);
                 video.src = encodeURI(nextSrc);
+                video.load();
 
                 // 根據當前具體播放的影片檔名，精準呈現專屬情境台詞！
                 if (thoughtBubble) {
                     thoughtBubble.innerText = getThoughtMessage(nextSrc, action);
                 }
 
-                video.play().catch(e => {
-                    console.log('播放被阻擋或出錯:', e);
-                    finishAction();
-                });
+                const p = video.play();
+                if (p !== undefined) {
+                    p.catch(e => {
+                        console.warn('動作影片播放受阻，嘗試靜音播放:', e);
+                        video.muted = true;
+                        video.play().catch(e2 => {
+                            console.error('動作影片無法播放，切換待機照片:', e2);
+                            isActionPlaying = false;
+                            setButtonsState(false);
+                            showImageMode('dogstand.png');
+                        });
+                    });
+                }
             }
         }
 
@@ -966,9 +994,15 @@
                     finishAction();
                 }
             };
-            video.onerror = () => {
-                console.log('影片載入或播放出錯，自動恢復待機狀態');
-                finishAction();
+            video.onerror = (e) => {
+                console.warn('影片載入或播放出錯，自動恢復待機照片保護:', e);
+                isActionPlaying = false;
+                activeActionBtn = null;
+                setButtonsState(false);
+                showImageMode('dogstand.png');
+                if (thoughtBubble) {
+                    thoughtBubble.innerText = '🐾 汪汪！我是你的專屬邊境牧羊犬，隨時等你的指令喔！';
+                }
             };
         }
 
