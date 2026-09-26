@@ -209,6 +209,31 @@
             background: transparent;
         }
 
+        /* 載入中溫馨提示浮層 (雲端下載較慢時提示，絕不黑屏) */
+        .video-loading-badge {
+            position: absolute;
+            bottom: 16px;
+            background: rgba(43, 23, 71, 0.85);
+            backdrop-filter: blur(8px);
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 7px 18px;
+            border-radius: 9999px;
+            border: 1.5px solid rgba(254, 240, 138, 0.4);
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 10;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            animation: pulseFade 1.3s ease-in-out infinite;
+        }
+
+        @keyframes pulseFade {
+            0%, 100% { opacity: 0.85; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.04); }
+        }
+
         /* 右卡：狀態儀表板與按鈕 */
         .right-card {
             gap: 16px;
@@ -447,8 +472,11 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <video id="pet-video-player" autoplay muted playsinline webkit-playsinline preload="auto"></video>
-                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片" style="display: none;">
+                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片">
+                <video id="pet-video-player" playsinline webkit-playsinline preload="auto" style="display: none;"></video>
+                <div id="video-loading-badge" class="video-loading-badge">
+                    <span>🐾 狗狗正在趕來中...</span>
+                </div>
             </div>
 
             <div class="speech-bubble-container">
@@ -563,6 +591,7 @@
         // DOM 元素
         const video = document.getElementById('pet-video-player');
         const imagePlayer = document.getElementById('pet-image-player');
+        const videoLoader = document.getElementById('video-loading-badge');
         const thoughtBubble = document.getElementById('pet-speech-bubble');
         const mood = document.getElementById('mood-text');
 
@@ -581,11 +610,17 @@
         }
 
         function showVideoMode() {
-            if (video) {
-                // 等視訊下載好有畫面（canplay）才打開視訊、隱藏照片，避免 GitHub 下載慢時出現黑屏！
+            if (video && imagePlayer) {
+                // 1. 等待下載期間：先讓照片頂著，把空的黑視訊藏起來，絕不黑屏！
+                imagePlayer.style.display = 'block';
+                video.style.display = 'none';
+                if (videoLoader) videoLoader.style.display = 'flex';
+
+                // 2. 當新影片在背景下載好有畫面（canplay）時：才切換到視訊，並把照片和載入提示藏起來！
                 const onReady = () => {
                     video.style.display = 'block';
-                    if (imagePlayer) imagePlayer.style.display = 'none';
+                    imagePlayer.style.display = 'none';
+                    if (videoLoader) videoLoader.style.display = 'none';
                     video.removeEventListener('canplay', onReady);
                 };
                 video.addEventListener('canplay', onReady);
@@ -594,8 +629,11 @@
 
         function showImageMode(src) {
             if (video) {
-                video.pause();
+                try { video.pause(); } catch (e) {}
                 video.style.display = 'none';
+            }
+            if (videoLoader) {
+                videoLoader.style.display = 'none';
             }
             if (imagePlayer) {
                 imagePlayer.src = encodeURI(src);
