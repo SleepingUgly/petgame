@@ -185,46 +185,28 @@
             z-index: 1;
         }
 
-        /* 影片播放框 (鎖定原生 464x688 垂直直式比例) */
+        /* 影片播放框 (鎖定原生 464x688 垂直直式比例，完整展示上下全景不裁切) */
         .video-wrapper {
             position: relative;
             width: 100%;
             aspect-ratio: 464 / 688;
-            background: linear-gradient(180deg, #2b1747 0%, #1e1133 100%);
+            background: #111827;
             border-radius: 18px;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
         }
 
-        /* 底層待機照片 (永遠存在，作為保底防護層，徹底消滅黑屏) */
+        #pet-video-player,
         #pet-image-player {
-            position: absolute;
-            top: 0;
-            left: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            object-position: center center;
-            border-radius: 18px;
-            z-index: 1;
+            object-fit: contain;
             display: block;
-            transition: opacity 0.25s ease;
-        }
-
-        /* 頂層視訊播放器 (播放中才淡入顯示，載入中透明，露出底下的照片) */
-        #pet-video-player {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: center center;
             border-radius: 18px;
-            z-index: 2;
-            opacity: 0;
-            transition: opacity 0.25s ease;
-            background: transparent;
+            background: #111827;
         }
 
         /* 右卡：狀態儀表板與按鈕 */
@@ -465,8 +447,8 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片">
-                <video id="pet-video-player" playsinline webkit-playsinline preload="auto"></video>
+                <video id="pet-video-player" autoplay muted playsinline webkit-playsinline preload="auto"></video>
+                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片" style="display: none;">
             </div>
 
             <div class="speech-bubble-container">
@@ -601,17 +583,20 @@
         function showVideoMode() {
             if (video) {
                 video.style.display = 'block';
+                video.onloadeddata = () => {
+                    if (imagePlayer) imagePlayer.style.display = 'none';
+                };
             }
         }
 
         function showImageMode(src) {
             if (video) {
-                try { video.pause(); } catch (e) {}
-                video.style.opacity = '0';
+                video.pause();
+                video.style.display = 'none';
             }
             if (imagePlayer) {
                 imagePlayer.src = encodeURI(src);
-                imagePlayer.style.opacity = '1';
+                imagePlayer.style.display = 'block';
             }
         }
 
@@ -849,46 +834,36 @@
             });
         }
 
-        // 動作影片播放完畢後的平滑結尾切換
+        // 動作影片播放完畢後的平滑結尾切換 (零延遲秒切換，不卡頓)
         function finishAction() {
             if (!isActionPlaying) return;
-            // 延遲 300ms 緩衝，確保最後一個動作畫格被完整觀看，避免視覺突兀截斷
-            setTimeout(() => {
-                isActionPlaying = false;
-                activeActionBtn = null;
-                setButtonsState(false);
+            isActionPlaying = false;
+            activeActionBtn = null;
+            setButtonsState(false);
 
-                // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
-                const idle = getNextIdleState();
+            // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
+            const idle = getNextIdleState();
 
-                if (idle.type === 'video') {
-                    showVideoMode();
-                    if (video) {
-                        video.muted = true;
-                        video.volume = 0;
-                        video.loop = false; // ★ 播完一次就停在最後畫面，絕不一直重複循環播放！
-                        // 真正有畫面在播放時才淡入，載入中露出底下的狗狗照片，絕不黑屏！
-                        video.onplaying = () => {
-                            video.style.opacity = '1';
-                        };
-                        video.src = encodeURI(idle.src);
-                        const p = video.play();
-                        if (p !== undefined) {
-                            p.catch(err => {
-                                console.warn('待機影片播放受阻，降級為待機照片保護:', err);
-                                showImageMode('dogstand.png');
-                            });
-                        }
-                    }
-                } else {
-                    // 圖一照片模式
-                    showImageMode(idle.src);
+            if (idle.type === 'video') {
+                showVideoMode();
+                if (video) {
+                    video.muted = true;
+                    video.volume = 0;
+                    video.src = encodeURI(idle.src);
+                    video.loop = false; // 播完一次後靜止停留於最後一格畫面，不循環
+                    video.play().catch(e => {
+                        console.log('待機播放失敗，切回照片:', e);
+                        showImageMode('dogstand.png');
+                    });
                 }
+            } else {
+                // 圖一照片模式
+                showImageMode(idle.src);
+            }
 
-                if (thoughtBubble) {
-                    thoughtBubble.innerText = idle.msg;
-                }
-            }, 300);
+            if (thoughtBubble) {
+                thoughtBubble.innerText = idle.msg;
+            }
         }
 
         // 點擊 9 顆互動按鈕時執行的動作函式
@@ -954,10 +929,6 @@
                 video.loop = false;
                 video.muted = isPetMuted;
                 video.volume = isPetMuted ? 0 : 1.0;
-                // 真正有畫面在播放時才淡入，載入中露出底下的狗狗照片
-                video.onplaying = () => {
-                    video.style.opacity = '1';
-                };
                 const nextSrc = getNextVideo(action);
                 video.src = encodeURI(nextSrc);
 
@@ -966,19 +937,10 @@
                     thoughtBubble.innerText = getThoughtMessage(nextSrc, action);
                 }
 
-                const p = video.play();
-                if (p !== undefined) {
-                    p.catch(e => {
-                        console.warn('動作影片播放受阻，嘗試靜音播放:', e);
-                        video.muted = true;
-                        video.play().catch(e2 => {
-                            console.error('動作影片無法播放，切換待機照片:', e2);
-                            isActionPlaying = false;
-                            setButtonsState(false);
-                            showImageMode('dogstand.png');
-                        });
-                    });
-                }
+                video.play().catch(e => {
+                    console.log('播放被阻擋或出錯:', e);
+                    finishAction();
+                });
             }
         }
 
@@ -1005,15 +967,9 @@
                     finishAction();
                 }
             };
-            video.onerror = (e) => {
-                console.warn('影片載入或播放出錯，自動恢復待機照片保護:', e);
-                isActionPlaying = false;
-                activeActionBtn = null;
-                setButtonsState(false);
-                showImageMode('dogstand.png');
-                if (thoughtBubble) {
-                    thoughtBubble.innerText = '🐾 汪汪！我是你的專屬邊境牧羊犬，隨時等你的指令喔！';
-                }
+            video.onerror = () => {
+                console.log('影片載入或播放出錯，自動恢復待機狀態');
+                finishAction();
             };
         }
 
@@ -1027,11 +983,24 @@
             updateStatus();
         }, 15000);
 
+        // 背景預載入高頻影片，讓點擊與切換瞬間播放零延遲
+        function preloadKeyVideos() {
+            const list = ['dogsleep.mp4', 'dogbreak.mp4', 'dogeat.mp4', 'dogdrink.mp4', 'dogpethead.mp4'];
+            list.forEach(src => {
+                const link = document.createElement('link');
+                link.rel = 'prefetch';
+                link.as = 'video';
+                link.href = encodeURI(src);
+                document.head.appendChild(link);
+            });
+        }
+
         // 初始化寵物模組
         function initPet() {
             createButtons();
             updateStatus();
             updatePetSoundUI();
+            preloadKeyVideos();
             // 初始以圖一照片（精神飽滿站姿）迎接玩家
             showImageMode('dogstand.png');
             if (thoughtBubble) {
