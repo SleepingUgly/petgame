@@ -28,7 +28,7 @@
             width: 100%;
             max-width: 920px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
         }
@@ -190,7 +190,7 @@
             position: relative;
             width: 100%;
             aspect-ratio: 464 / 688;
-            background: linear-gradient(180deg, #2b1747 0%, #1e1133 100%);
+            background: #111827;
             border-radius: 18px;
             overflow: hidden;
             display: flex;
@@ -206,32 +206,7 @@
             object-fit: contain;
             display: block;
             border-radius: 18px;
-            background: transparent;
-        }
-
-        /* 載入中溫馨提示浮層 (雲端下載較慢時提示，絕不黑屏) */
-        .video-loading-badge {
-            position: absolute;
-            bottom: 16px;
-            background: rgba(43, 23, 71, 0.85);
-            backdrop-filter: blur(8px);
-            color: #ffffff;
-            font-size: 13px;
-            font-weight: 700;
-            padding: 7px 18px;
-            border-radius: 9999px;
-            border: 1.5px solid rgba(254, 240, 138, 0.4);
-            display: none;
-            align-items: center;
-            gap: 8px;
-            z-index: 10;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-            animation: pulseFade 1.3s ease-in-out infinite;
-        }
-
-        @keyframes pulseFade {
-            0%, 100% { opacity: 0.85; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.04); }
+            background: #111827;
         }
 
         /* 右卡：狀態儀表板與按鈕 */
@@ -456,6 +431,9 @@
 
     <!-- 頂部導航條 -->
     <header class="top-nav">
+        <button class="home-btn" onclick="location.reload()">
+            🏠 返回主首頁 (Back to Home)
+        </button>
         <div class="breed-badge" title="品種切換">
             🐕 邊境牧羊犬 · 陪伴專區 🐾 <span class="arrow">▼</span>
         </div>
@@ -472,11 +450,8 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片">
-                <video id="pet-video-player" playsinline webkit-playsinline preload="auto" style="display: none;"></video>
-                <div id="video-loading-badge" class="video-loading-badge">
-                    <span>🐾 狗狗正在趕來中...</span>
-                </div>
+                <video id="pet-video-player" autoplay muted playsinline webkit-playsinline preload="auto"></video>
+                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片" style="display: none;">
             </div>
 
             <div class="speech-bubble-container">
@@ -591,7 +566,6 @@
         // DOM 元素
         const video = document.getElementById('pet-video-player');
         const imagePlayer = document.getElementById('pet-image-player');
-        const videoLoader = document.getElementById('video-loading-badge');
         const thoughtBubble = document.getElementById('pet-speech-bubble');
         const mood = document.getElementById('mood-text');
 
@@ -610,30 +584,14 @@
         }
 
         function showVideoMode() {
-            if (video && imagePlayer) {
-                // 1. 等待下載期間：先讓照片頂著，把空的黑視訊藏起來，絕不黑屏！
-                imagePlayer.style.display = 'block';
-                video.style.display = 'none';
-                if (videoLoader) videoLoader.style.display = 'flex';
-
-                // 2. 當新影片在背景下載好有畫面（canplay）時：才切換到視訊，並把照片和載入提示藏起來！
-                const onReady = () => {
-                    video.style.display = 'block';
-                    imagePlayer.style.display = 'none';
-                    if (videoLoader) videoLoader.style.display = 'none';
-                    video.removeEventListener('canplay', onReady);
-                };
-                video.addEventListener('canplay', onReady);
-            }
+            if (imagePlayer) imagePlayer.style.display = 'none';
+            if (video) video.style.display = 'block';
         }
 
         function showImageMode(src) {
             if (video) {
-                try { video.pause(); } catch (e) {}
+                video.pause();
                 video.style.display = 'none';
-            }
-            if (videoLoader) {
-                videoLoader.style.display = 'none';
             }
             if (imagePlayer) {
                 imagePlayer.src = encodeURI(src);
@@ -875,36 +833,36 @@
             });
         }
 
-        // 動作影片播放完畢後的平滑結尾切換 (零延遲秒切換，不卡頓)
+        // 動作影片播放完畢後的平滑結尾切換
         function finishAction() {
             if (!isActionPlaying) return;
-            isActionPlaying = false;
-            activeActionBtn = null;
-            setButtonsState(false);
+            // 延遲 350ms 緩衝，確保最後一個動作畫格被完整觀看，避免視覺突兀截斷
+            setTimeout(() => {
+                isActionPlaying = false;
+                activeActionBtn = null;
+                setButtonsState(false);
 
-            // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
-            const idle = getNextIdleState();
+                // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
+                const idle = getNextIdleState();
 
-            if (idle.type === 'video') {
-                showVideoMode();
-                if (video) {
-                    video.muted = true;
-                    video.volume = 0;
-                    video.src = encodeURI(idle.src);
-                    video.loop = false; // 播完一次後靜止停留於最後一格畫面，不循環
-                    video.play().catch(e => {
-                        console.log('待機播放失敗，切回照片:', e);
-                        showImageMode('dogstand.png');
-                    });
+                if (idle.type === 'video') {
+                    showVideoMode();
+                    if (video) {
+                        video.muted = isPetMuted;
+                        video.volume = isPetMuted ? 0 : 1.0;
+                        video.src = encodeURI(idle.src);
+                        video.loop = false; // 播完一次後靜止停留於最後一格畫面，不循環
+                        video.play().catch(e => console.log('待機播放失敗:', e));
+                    }
+                } else {
+                    // 圖一照片模式
+                    showImageMode(idle.src);
                 }
-            } else {
-                // 圖一照片模式
-                showImageMode(idle.src);
-            }
 
-            if (thoughtBubble) {
-                thoughtBubble.innerText = idle.msg;
-            }
+                if (thoughtBubble) {
+                    thoughtBubble.innerText = idle.msg;
+                }
+            }, 350);
         }
 
         // 點擊 9 顆互動按鈕時執行的動作函式
@@ -1024,24 +982,11 @@
             updateStatus();
         }, 15000);
 
-        // 背景預載入高頻影片，讓點擊與切換瞬間播放零延遲
-        function preloadKeyVideos() {
-            const list = ['dogsleep.mp4', 'dogbreak.mp4', 'dogeat.mp4', 'dogdrink.mp4', 'dogpethead.mp4'];
-            list.forEach(src => {
-                const link = document.createElement('link');
-                link.rel = 'prefetch';
-                link.as = 'video';
-                link.href = encodeURI(src);
-                document.head.appendChild(link);
-            });
-        }
-
         // 初始化寵物模組
         function initPet() {
             createButtons();
             updateStatus();
             updatePetSoundUI();
-            preloadKeyVideos();
             // 初始以圖一照片（精神飽滿站姿）迎接玩家
             showImageMode('dogstand.png');
             if (thoughtBubble) {
