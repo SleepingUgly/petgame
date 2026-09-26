@@ -581,18 +581,8 @@
         }
 
         function showVideoMode() {
-            if (video) {
-                video.style.display = 'block';
-            }
-            if (imagePlayer && video) {
-                // 等視訊真正開始播放有畫面時再隱藏照片，確保切換時畫面無縫接軌，絕不閃黑屏！
-                const hideImageOnce = () => {
-                    if (video && video.style.display === 'block') {
-                        imagePlayer.style.display = 'none';
-                    }
-                };
-                video.addEventListener('playing', hideImageOnce, { once: true });
-            }
+            if (imagePlayer) imagePlayer.style.display = 'none';
+            if (video) video.style.display = 'block';
         }
 
         function showImageMode(src) {
@@ -855,12 +845,10 @@
                 if (idle.type === 'video') {
                     showVideoMode();
                     if (video) {
-                        // 待機影片（睡覺/休息）屬於環境氛圍，設定 muted=true 確保 100% 繞過瀏覽器非使用者手勢自動播放限制，永不黑屏！
                         video.muted = true;
                         video.volume = 0;
-                        video.loop = true; // 待機影片循環播放，讓狗狗持續活靈活現（呼吸、睡覺）
+                        video.loop = false; // ★ 播完一次就停在最後畫面，絕不一直重複循環播放！
                         video.src = encodeURI(idle.src);
-                        video.load();
                         const p = video.play();
                         if (p !== undefined) {
                             p.catch(err => {
@@ -945,7 +933,6 @@
                 video.volume = isPetMuted ? 0 : 1.0;
                 const nextSrc = getNextVideo(action);
                 video.src = encodeURI(nextSrc);
-                video.load();
 
                 // 根據當前具體播放的影片檔名，精準呈現專屬情境台詞！
                 if (thoughtBubble) {
