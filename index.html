@@ -564,51 +564,8 @@
         const mood = document.getElementById('mood-text');
         const thoughtBubble = document.getElementById('pet-speech-bubble');
 
-        // 智慧型全量影片背景預先下載系統 (Blob Memory Cache)
-        const videoBlobCache = {};
-
         function getVideoUrl(src) {
-            return videoBlobCache[src] || encodeURI(src);
-        }
-
-        async function preloadVideoBlob(src) {
-            if (videoBlobCache[src]) return;
-            try {
-                const res = await fetch(encodeURI(src));
-                if (res.ok) {
-                    const blob = await res.blob();
-                    videoBlobCache[src] = URL.createObjectURL(blob);
-                }
-            } catch (e) {}
-        }
-
-        const priorityPreloadList = [
-            'dogsleep.mp4', 'dogbreak.mp4', 'dogeat (2).mp4', 'eatwell.mp4',
-            'dogdrink.mp4', 'dogpethead.mp4', 'dogshower1.mp4', 'dpgpoo.mp4',
-            'dogdoctor.mp4', 'bigtree.mp4', 'doglongwall.mp4', 'dogwalk.mp4',
-            'dogdisney.mp4', 'dogmars.mp4', 'gotospace.mp4', 'spaceelon.mp4',
-            'dogcook.mp4', 'dogcollar.mp4'
-        ];
-
-        async function startPreloadingAllVideos() {
-            const priorityQueue = [...priorityPreloadList];
-            const worker = async () => {
-                while (priorityQueue.length > 0) {
-                    const file = priorityQueue.shift();
-                    await preloadVideoBlob(file);
-                }
-            };
-            await Promise.all([worker(), worker()]);
-
-            const allSet = new Set();
-            if (typeof videos === 'object') {
-                Object.values(videos).forEach(list => list.forEach(v => allSet.add(v)));
-            }
-            const remaining = Array.from(allSet).filter(file => !videoBlobCache[file]);
-            for (const file of remaining) {
-                await preloadVideoBlob(file);
-                await new Promise(r => setTimeout(r, 120));
-            }
+            return encodeURI(src);
         }
 
         // 所有動作對應的影片 (直接帶入你主頁的完整影片列表)
@@ -838,9 +795,6 @@
                     }
                 });
             }
-
-            // 啟動全量影片背景預下載系統 (進頁面立即背景全速下載至 RAM，點擊瞬間零延遲秒播)
-            startPreloadingAllVideos();
         }
 
         if (document.readyState === 'loading') {
