@@ -190,7 +190,7 @@
             position: relative;
             width: 100%;
             aspect-ratio: 464 / 688;
-            background: #111827;
+            background: linear-gradient(180deg, #2b1747 0%, #1e1133 100%);
             border-radius: 18px;
             overflow: hidden;
             display: flex;
@@ -206,7 +206,7 @@
             object-fit: contain;
             display: block;
             border-radius: 18px;
-            background: #111827;
+            background: transparent;
         }
 
         /* 右卡：狀態儀表板與按鈕 */
@@ -582,10 +582,13 @@
 
         function showVideoMode() {
             if (video) {
-                video.style.display = 'block';
-                video.onloadeddata = () => {
+                // 等視訊下載好有畫面（canplay）才打開視訊、隱藏照片，避免 GitHub 下載慢時出現黑屏！
+                const onReady = () => {
+                    video.style.display = 'block';
                     if (imagePlayer) imagePlayer.style.display = 'none';
+                    video.removeEventListener('canplay', onReady);
                 };
+                video.addEventListener('canplay', onReady);
             }
         }
 
