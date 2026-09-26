@@ -185,7 +185,7 @@
             z-index: 1;
         }
 
-        /* 影片播放框 (鎖定原生 464x688 垂直直式比例，完整展示上下全景不裁切) */
+        /* 影片播放框 (鎖定原生 464x688 垂直直式比例) */
         .video-wrapper {
             position: relative;
             width: 100%;
@@ -193,19 +193,37 @@
             background: linear-gradient(180deg, #2b1747 0%, #1e1133 100%);
             border-radius: 18px;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
         }
 
-        #pet-video-player,
+        /* 底層待機照片 (永遠存在，作為保底防護層，徹底消滅黑屏) */
         #pet-image-player {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
-            display: block;
+            object-fit: cover;
+            object-position: center center;
             border-radius: 18px;
+            z-index: 1;
+            display: block;
+            transition: opacity 0.25s ease;
+        }
+
+        /* 頂層視訊播放器 (播放中才淡入顯示，載入中透明，露出底下的照片) */
+        #pet-video-player {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center center;
+            border-radius: 18px;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.25s ease;
             background: transparent;
         }
 
@@ -447,8 +465,8 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <video id="pet-video-player" autoplay muted playsinline webkit-playsinline preload="auto"></video>
-                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片" style="display: none;">
+                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片">
+                <video id="pet-video-player" playsinline webkit-playsinline preload="auto"></video>
             </div>
 
             <div class="speech-bubble-container">
@@ -581,18 +599,19 @@
         }
 
         function showVideoMode() {
-            if (imagePlayer) imagePlayer.style.display = 'none';
-            if (video) video.style.display = 'block';
+            if (video) {
+                video.style.display = 'block';
+            }
         }
 
         function showImageMode(src) {
             if (video) {
                 try { video.pause(); } catch (e) {}
-                video.style.display = 'none';
+                video.style.opacity = '0';
             }
             if (imagePlayer) {
                 imagePlayer.src = encodeURI(src);
-                imagePlayer.style.display = 'block';
+                imagePlayer.style.opacity = '1';
             }
         }
 
@@ -848,6 +867,10 @@
                         video.muted = true;
                         video.volume = 0;
                         video.loop = false; // ★ 播完一次就停在最後畫面，絕不一直重複循環播放！
+                        // 真正有畫面在播放時才淡入，載入中露出底下的狗狗照片，絕不黑屏！
+                        video.onplaying = () => {
+                            video.style.opacity = '1';
+                        };
                         video.src = encodeURI(idle.src);
                         const p = video.play();
                         if (p !== undefined) {
@@ -931,6 +954,10 @@
                 video.loop = false;
                 video.muted = isPetMuted;
                 video.volume = isPetMuted ? 0 : 1.0;
+                // 真正有畫面在播放時才淡入，載入中露出底下的狗狗照片
+                video.onplaying = () => {
+                    video.style.opacity = '1';
+                };
                 const nextSrc = getNextVideo(action);
                 video.src = encodeURI(nextSrc);
 
