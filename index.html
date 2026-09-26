@@ -374,16 +374,6 @@
             animation: pulseGlow 1.2s infinite;
         }
 
-        .action-btn:disabled,
-        .action-btn.is-disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-            pointer-events: none;
-            filter: grayscale(0.2);
-            transform: none !important;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-        }
-
         .btn-sub {
             display: block;
             font-size: 11px;
@@ -459,9 +449,7 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <img id="pet-image-player" class="pet-media-layer active" src="dogstand.png" alt="狗狗待機照片">
-                <video id="pet-video-player-1" class="pet-media-layer" playsinline webkit-playsinline preload="auto"></video>
-                <video id="pet-video-player-2" class="pet-media-layer" playsinline webkit-playsinline preload="auto"></video>
+                <video id="pet-video-player" playsinline webkit-playsinline autoplay muted poster="dogstand.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: 18px;"></video>
             </div>
 
             <div class="speech-bubble-container">
@@ -567,220 +555,19 @@
     </main>
 
     <script>
-        // 寵物狀態資料
+        // 寵物狀態資料 (依你原始主頁設定)
         const pet = {
             health: 100, food: 80, water: 80, clean: 100, love: 50,
             isSick: false, isDirty: false, accessory: 'none'
         };
 
-        // DOM 元素 (雙緩衝視訊播放器 + 靜態照片圖層)
-        const imagePlayer = document.getElementById('pet-image-player');
-        const videoPlayers = [
-            document.getElementById('pet-video-player-1'),
-            document.getElementById('pet-video-player-2')
-        ];
-        let currentActiveEl = imagePlayer;
-        let currentVideoIdx = 0;
+        const video = document.getElementById('pet-video-player');
         const thoughtBubble = document.getElementById('pet-speech-bubble');
         const mood = document.getElementById('mood-text');
 
-        // 待機狀態交替清單：圖一照片(dogstand.png)、圖二睡覺影片(dogsleep.mp4)、圖三趴地影片(dogbreak.mp4)
-        const idleStates = [
-            { type: 'image', src: 'dogstand.png', msg: '🐾 汪汪！我是你的專屬邊境牧羊犬，點擊右方按鈕和我互動喔！' },
-            { type: 'video', src: 'dogsleep.mp4', msg: '💤 呼嚕嚕... 狗狗好舒服地在小窩裡睡大覺～' },
-            { type: 'video', src: 'dogbreak.mp4', msg: '🐾 趴在地板上放鬆休息中～隨時等你的指令喔！' }
-        ];
-        let idleIndex = 1; // 初始為圖一，第一次完成動作後切到圖二
-
-        function getNextIdleState() {
-            const state = idleStates[idleIndex];
-            idleIndex = (idleIndex + 1) % idleStates.length;
-            return state;
-        }
-
-        // 智慧型全量影片背景預先下載系統 (Blob Memory Cache)
-        const videoBlobCache = {};
-
-        function getVideoUrl(src) {
-            return videoBlobCache[src] || encodeURI(src);
-        }
-
-        async function preloadVideoBlob(src) {
-            if (videoBlobCache[src]) return;
-            try {
-                const res = await fetch(encodeURI(src));
-                if (res.ok) {
-                    const blob = await res.blob();
-                    videoBlobCache[src] = URL.createObjectURL(blob);
-                }
-            } catch (e) {}
-        }
-
-        // 高優先級預載入清單 (輕量待機影片與高頻動作影片，3秒內極速入快取)
-        const priorityPreloadList = [
-            'dogsleep.mp4',
-            'dogbreak.mp4',
-            'dogeat.mp4',
-            'dogdrink.mp4',
-            'dogpethead.mp4',
-            'dogshower1.mp4',
-            'dpgpoo.mp4',
-            'dogdoctor.mp4',
-            'bigtree.mp4',
-            'doglongwall.mp4',
-            'dogwalk.mp4',
-            'dogdisney.mp4',
-            'dogcook.mp4',
-            'dogcollar.mp4',
-            'dogpettummy.mp4',
-            'dog101.mp4',
-            'dogjapan.mp4'
-        ];
-
-        async function startPreloadingAllVideos() {
-            // 第一階段：優先背景載入最常用的待機與動作影片 (兩路並發，迅速入快取)
-            const priorityQueue = [...priorityPreloadList];
-            const worker = async () => {
-                while (priorityQueue.length > 0) {
-                    const file = priorityQueue.shift();
-                    await preloadVideoBlob(file);
-                }
-            };
-            await Promise.all([worker(), worker()]);
-
-            // 第二階段：依序背景載入其餘所有精彩影片
-            const allSet = new Set();
-            if (typeof videos === 'object') {
-                Object.values(videos).forEach(list => list.forEach(v => allSet.add(v)));
-            }
-            const remaining = Array.from(allSet).filter(file => !videoBlobCache[file]);
-
-            for (const file of remaining) {
-                await preloadVideoBlob(file);
-                await new Promise(r => setTimeout(r, 120));
-            }
-        }
-
-        // 零黑屏無縫視訊切換播放核心 (具備多重守護，徹底杜絕影片末端卡死)
-        function playMediaVideo({ src, loop, muted, volume, onEnded, onError }) {
-            const nextVideo = videoPlayers[1 - currentVideoIdx];
-            const prevEl = currentActiveEl;
-
-            // 清理舊事件監聽與定時器
-            nextVideo.onended = null;
-            nextVideo.onerror = null;
-            nextVideo.onplaying = null;
-            nextVideo.onloadeddata = null;
-            nextVideo.ontimeupdate = null;
-            nextVideo.onloadedmetadata = null;
-
-            let durationTimeout = null;
-            let endFired = false;
-
-            const triggerEnd = () => {
-                if (endFired) return;
-                endFired = true;
-                if (durationTimeout) {
-                    clearTimeout(durationTimeout);
-                    durationTimeout = null;
-                }
-                nextVideo.ontimeupdate = null;
-                nextVideo.onended = null;
-                if (onEnded) onEnded();
-            };
-
-            nextVideo.loop = loop;
-            nextVideo.muted = muted;
-            nextVideo.volume = volume;
-            nextVideo.src = getVideoUrl(src);
-
-            let hasSwitched = false;
-            const switchToNext = () => {
-                if (hasSwitched) return;
-                hasSwitched = true;
-                nextVideo.classList.add('active');
-                if (prevEl && prevEl !== nextVideo) {
-                    prevEl.classList.remove('active');
-                    if (prevEl.tagName === 'VIDEO') {
-                        try { prevEl.pause(); } catch(e) {}
-                    }
-                }
-                currentActiveEl = nextVideo;
-                currentVideoIdx = 1 - currentVideoIdx;
-            };
-
-            nextVideo.onplaying = switchToNext;
-            nextVideo.onloadeddata = switchToNext;
-
-            // 1. 原生 onended 事件
-            nextVideo.onended = () => {
-                if (!loop) triggerEnd();
-            };
-
-            // 2. 精準 timeupdate 守護：
-            // AI 生成影片音訊軌與視訊軌常有 0.005 秒極微小誤差，導致瀏覽器漏發 onended。
-            // 當播放到達最後 0.15 秒時，自動觸發圓滿結束過渡！
-            nextVideo.ontimeupdate = () => {
-                if (!loop && nextVideo.duration > 0) {
-                    if (nextVideo.currentTime >= nextVideo.duration - 0.15) {
-                        triggerEnd();
-                    }
-                }
-            };
-
-            // 3. 元數據載入後，以精確影片長度設置超時定時器 (+0.4秒)，絕無卡死死角！
-            nextVideo.onloadedmetadata = () => {
-                if (!loop && nextVideo.duration > 0) {
-                    const maxMs = Math.max(1000, (nextVideo.duration + 0.4) * 1000);
-                    if (durationTimeout) clearTimeout(durationTimeout);
-                    durationTimeout = setTimeout(() => {
-                        console.warn('影片播放到達精確時長上限，自動平滑收尾:', src);
-                        triggerEnd();
-                    }, maxMs);
-                }
-            };
-
-            nextVideo.onerror = (e) => {
-                console.warn('影片播放錯誤:', src, e);
-                if (durationTimeout) clearTimeout(durationTimeout);
-                if (onError) onError(e);
-            };
-
-            const playPromise = nextVideo.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(err => {
-                    console.warn('播放被阻擋或出錯:', err);
-                    if (!nextVideo.muted) {
-                        nextVideo.muted = true;
-                        nextVideo.play().catch(e2 => {
-                            if (durationTimeout) clearTimeout(durationTimeout);
-                            if (onError) onError(e2);
-                        });
-                    } else {
-                        if (durationTimeout) clearTimeout(durationTimeout);
-                        if (onError) onError(err);
-                    }
-                });
-            }
-        }
-
-        // 切換回照片圖層
-        function showMediaImage(src) {
-            if (!imagePlayer) return;
-            imagePlayer.src = encodeURI(src);
-            imagePlayer.classList.add('active');
-            if (currentActiveEl && currentActiveEl !== imagePlayer) {
-                currentActiveEl.classList.remove('active');
-                if (currentActiveEl.tagName === 'VIDEO') {
-                    try { currentActiveEl.pause(); } catch(e) {}
-                }
-            }
-            currentActiveEl = imagePlayer;
-        }
-
-        // 所有動作對應的影片檔名清單（完整對應資料夾內的 MP4 影片）
+        // 所有動作對應的影片檔名清單（完整包含 30 部影片，包含 dogmars.mp4）
         const videos = {
-            feed:      ['dogeat.mp4', 'eatwell.mp4', 'dogeat (2).mp4'],
+            feed:      ['dogeat (2).mp4', 'eatwell.mp4', 'dogeat.mp4'],
             water:     ['dogdrink.mp4'],
             pet:       ['dogpethead.mp4', 'dogpettummy.mp4', 'dogitsback.mp4', 'haha2.mp4'],
             bath:      ['dogshower1.mp4', 'dogshower2.mp4'],
@@ -788,11 +575,11 @@
             heal:      ['dogdoctor.mp4'],
             out:       ['bigtree.mp4', 'doglongwall.mp4', 'dogwalk.mp4', 'dogdisney.mp4', 'dog101.mp4', 'dogjapan.mp4', 'dogitaly.mp4', 'dogfrench.mp4', 'dogswims.mp4', 'gotospace.mp4', 'spaceelon.mp4', 'dogmars.mp4', 'dogplay1.mp4', 'dogplay.mp4', 'haha1.mp4', 'haha2.mp4', 'T1.mp4'],
             watch:     ['dogcook.mp4', 'dogsleep.mp4', 'dogbreak.mp4', 'dpgplaycups.mp4', 'dogitsback.mp4', 'dogwithorangecat.mp4', 'dogwithtwocats.mp4', 'dogmouse1.mp4', 'dogsmart1.mp4', 'dogtricks.mp4', 'demis_play.mp4'],
-            dress:     ['dogcollar.mp4', 'newdress1.mp4', 'newdress.mp4', 'withcollar.mp4'],
-            default:   ['dogbreak.mp4']
+            dress:     ['dogcollar.mp4', 'newdress1.mp4', 'withcollar.mp4', 'newdress.mp4'],
+            default:   ['dogsleep.mp4', 'dogbreak.mp4', 'dpgplaycups.mp4', 'dogitsback.mp4', 'dogtricks.mp4']
         };
 
-        // 9 顆雙語按鈕標籤
+        // 按鈕標籤
         const buttonLabels = {
             feed:      '🍖 肚子餓<span class="btn-sub">hungry</span>',
             water:     '💧 喝水水<span class="btn-sub">thirsty</span>',
@@ -805,51 +592,36 @@
             dress:     '🎀 換裝扮<span class="btn-sub">styles</span>'
         };
 
-        // 影片專屬情境台詞（100% 精準對應每部影片具體畫面）
+        // 影片專屬情境台詞
         const videoSpecificMessages = {
-            // 出去玩 (外太空與火星、各國世界景點、戶外運動)
-            'gotospace.mp4':    '🚀 汪！我穿太空衣登上太空站了！俯瞰美麗的藍色地球太震撼啦～',
-            'spaceelon.mp4':    '🌌 漂浮在浩瀚的宇宙星空中漫步，我是最勇敢的太空探險犬！',
-            'dogmars.mp4':      '🔴 成功登陸火星表面！穿著太空衣漫步在紅色星球上，我是第一隻火星探險犬！',
-            'dogfrench.mp4':    '🎨 來到法國巴黎羅浮宮欣賞名畫《蒙娜麗莎》，狗狗也是小小藝術鑑賞家呢！',
-            'bigtree.mp4':      '🎄 哇！好夢幻的巨型聖誕樹，燈光閃閃亮亮的，聖誕快樂汪汪！',
-            'doglongwall.mp4':  '🏯 來到壯麗雄偉的萬里長城漫步打卡，好漢狗狗汪汪叫！',
-            'dog101.mp4':       '🗼 來到台北 101 大樓前打卡拍照，帥氣欣賞美麗天際線！',
-            'dogdisney.mp4':    '🏰 來到夢幻迪士尼城堡前看璀璨煙火，彷彿童話世界一樣美！',
-            'dogjapan.mp4':     '🌸 漫步在日本傳統神社與盛開櫻花樹下，風景超優美～',
-            'dogitaly.mp4':     '🛶 來到浪漫悠閒的義大利水都歐風街道，充滿異國旅行風情！',
-            'dogswims.mp4':     '🏊‍♂️ 噗通跳進清涼水池游泳嬉戲，狗狗的狗爬式身手超敏捷！',
-            'dogwalk.mp4':      '🦮 在陽光明媚的林蔭綠廊散步漫遊，微風吹拂心情好放鬆！',
-            'dogplay1.mp4':     '🎾 到公園大草地上奔跑追逐接球，狗狗玩得超級興奮好快樂！',
-            'dogplay.mp4':      '⚽ 追球小神犬！在草地上追逐飛盤與球球，活力四射超開心！',
-            'haha1.mp4':        '🤸‍♂️ 哈哈！看我超敏捷的空中跳躍特技，帥氣度百分百！',
-            'haha2.mp4':        '🎉 狗狗在大自然草地上開心地又蹦又跳，歡樂無窮撒歡跑！',
-            'T1.mp4':           '🏆 專業敏捷接球訓練大成功！體力與速度都達到滿分狀態！',
-
-            // 餵食美食
-            'dogeat.mp4':       '🍖 好吃好吃！大口大口吃香噴噴肉肉，飽足感大提升！',
-            'eatwell.mp4':      '🍲 哇！今天是五星級營養大餐，狗狗吃得津津有味超滿足！',
-            'dogeat (2).mp4':   '🍖 香噴噴的美味狗糧，每一口都吃得乾乾淨淨～',
-
-            // 喝水
-            'dogdrink.mp4':     '💧 咕嚕咕嚕！大口喝下清涼乾淨的水分，精神飽滿活力充沛！',
-
-            // 摸摸撒嬌
-            'dogpethead.mp4':   '💖 摸摸頭好舒服～狗狗開心瞇瞇眼，舒服地向你撒嬌討摸！',
-            'dogpettummy.mp4':  '🐾 露出軟綿綿的小肚子讓你摸摸，這是最信任你的表現喔！',
-            'dogitsback.mp4':   '✨ 舒服到翻肚肚在地毯上打滾～狗狗開心得尾巴搖不停！',
-
-            // 洗澡護理
-            'dogshower1.mp4':   '🛁 搓搓泡泡洗香香！毛髮洗得乾淨蓬鬆又清爽亮麗！',
-            'dogshower2.mp4':   '🚿 溫水泡泡浴好享受～洗完香噴噴又乾淨，神清氣爽！',
-
-            // 便便衛生
-            'dpgpoo.mp4':       '🧹 便便清理得乾乾淨淨！環境好衛生好舒服～',
-
-            // 看醫生
-            'dogdoctor.mp4':    '🩺 獸醫叔叔細心檢查後，狗狗身體充滿活力，健康百分百！',
-
-            // 看監視器生活紀錄
+            'gotospace.mp4':        '🚀 汪！我穿太空衣登上太空站了！俯瞰美麗的藍色地球太震撼啦～',
+            'spaceelon.mp4':        '🌌 漂浮在浩瀚的宇宙星空中漫步，我是最勇敢的太空探險犬！',
+            'dogmars.mp4':          '🔴 成功登陸火星表面！穿著太空衣漫步在紅色星球上，我是第一隻火星探險犬！',
+            'dogfrench.mp4':        '🎨 來到法國巴黎羅浮宮欣賞名畫《蒙娜麗莎》，狗狗也是小小藝術鑑賞家呢！',
+            'bigtree.mp4':          '🎄 哇！好夢幻的巨型聖誕樹，燈光閃閃亮亮的，聖誕快樂汪汪！',
+            'doglongwall.mp4':      '🏯 來到壯麗雄偉的萬里長城漫步打卡，好漢狗狗汪汪叫！',
+            'dog101.mp4':           '🗼 來到台北 101 大樓前打卡拍照，帥氣欣賞美麗天際線！',
+            'dogdisney.mp4':        '🏰 來到夢幻迪士尼城堡前看璀璨煙火，彷彿童話世界一樣美！',
+            'dogjapan.mp4':         '🌸 漫步在日本傳統神社與盛開櫻花樹下，風景超優美～',
+            'dogitaly.mp4':         '🛶 來到浪漫悠閒的義大利水都歐風街道，充滿異國旅行風情！',
+            'dogswims.mp4':         '🏊‍♂️ 噗通跳進清涼水池游泳嬉戲，狗狗的狗爬式身手超敏捷！',
+            'dogwalk.mp4':          '🦮 在陽光明媚的林蔭綠廊散步漫遊，微風吹拂心情好放鬆！',
+            'dogplay1.mp4':         '🎾 到公園大草地上奔跑追逐接球，狗狗玩得超級興奮好快樂！',
+            'dogplay.mp4':          '⚽ 追球小神犬！在草地上追逐飛盤與球球，活力四射超開心！',
+            'haha1.mp4':            '🤸‍♂️ 哈哈！看我超敏捷的空中跳躍特技，帥氣度百分百！',
+            'haha2.mp4':            '🎉 狗狗在大自然草地上開心地又蹦又跳，歡樂無窮撒歡跑！',
+            'T1.mp4':               '🏆 專業敏捷接球訓練大成功！體力與速度都達到滿分狀態！',
+            'dogeat.mp4':           '🍖 好吃好吃！大口大口吃香噴噴肉肉，飽足感大提升！',
+            'eatwell.mp4':          '🍲 哇！今天是五星級營養大餐，狗狗吃得津津有味超滿足！',
+            'dogeat (2).mp4':       '🍖 香噴噴的美味狗糧，每一口都吃得乾乾淨淨～',
+            'dogdrink.mp4':         '💧 咕嚕咕嚕！大口喝下清涼乾淨的水分，精神飽滿活力充沛！',
+            'dogpethead.mp4':       '💖 摸摸頭好舒服～狗狗開心瞇瞇眼，舒服地向你撒嬌討摸！',
+            'dogpettummy.mp4':      '🐾 露出軟綿綿的小肚子讓你摸摸，這是最信任你的表現喔！',
+            'dogitsback.mp4':       '✨ 舒服到翻肚肚在地毯上打滾～狗狗開心得尾巴搖不停！',
+            'dogshower1.mp4':       '🛁 搓搓泡泡洗香香！毛髮洗得乾淨蓬鬆又清爽亮麗！',
+            'dogshower2.mp4':       '🚿 溫水泡泡浴好享受～洗完香噴噴又乾淨，神清氣爽！',
+            'dpgpoo.mp4':           '🧹 便便清理得乾乾淨淨！環境好衛生好舒服～',
+            'dogdoctor.mp4':        '🩺 獸醫叔叔細心檢查後，狗狗身體充滿活力，健康百分百！',
             'dogcook.mp4':          '🍳 監視器拍到：狗狗居然戴著廚師帽在廚房忙碌做料理？！太可愛啦！',
             'dogsleep.mp4':         '📹 監視器畫面：狗狗正捲曲在溫暖小窩裡蓋著毛毯呼呼大睡～',
             'dogbreak.mp4':         '📹 監視器畫面：狗狗正悠閒地趴在客廳木地板上打瞌睡休息～',
@@ -860,61 +632,20 @@
             'dogsmart1.mp4':        '💡 監視器畫面：高智商邊牧正在解開益智玩具機關，超厲害！',
             'dogtricks.mp4':        '🤸 監視器畫面：狗狗在客廳展示超高跳躍彈跳特技！',
             'demis_play.mp4':       '🎾 監視器畫面：狗狗活力滿滿地在玩耍自得其樂！',
-
-            // 換裝扮
-            'dogcollar.mp4':    '✨ 戴上精緻的新項圈，看起來格外精神又有貴族氣質！',
-            'newdress1.mp4':    '👗 換上全新時尚服裝，今天也是街頭最靚的狗狗明星！',
-            'newdress.mp4':     '🎀 帥氣新穿搭亮相！可愛度與時尚感瞬間拉滿！',
-            'withcollar.mp4':   '💎 佩戴上專屬造型項圈，帥氣亮眼，超級神氣！'
+            'dogcollar.mp4':        '✨ 戴上精緻的新項圈，看起來格外精神又有貴族氣質！',
+            'newdress1.mp4':        '👗 換上全新時尚服裝，今天也是街頭最靚的狗狗明星！',
+            'newdress.mp4':         '🎀 帥氣新穿搭亮相！可愛度與時尚感瞬間拉滿！',
+            'withcollar.mp4':       '💎 佩戴上專屬造型項圈，帥氣亮眼，超級神氣！'
         };
 
-        // 預設動作通用回饋 (備用)
-        const thoughtMessages = {
-            feed:      '🍖 好吃好吃！狗狗吃得津津有味，飽足感大提升！',
-            water:     '💧 咕嚕咕嚕！狗狗補充了乾淨的水分，精神飽滿！',
-            pet:       '💖 摸摸頭好幸福～狗狗舒服地搖尾巴撒嬌中！',
-            bath:      '🛁 洗香香泡泡浴！毛髮變得乾淨蓬鬆又亮麗！',
-            clean_poo: '🧹 清理得乾乾淨淨！環境好衛生好舒服～',
-            heal:      '🩺 獸醫細心檢查後，狗狗身體充滿活力，健康百分百！',
-            out:       '🎾 狗狗出門探險遊玩，超級興奮好快樂！',
-            watch:     '📹 透過寵物監視器看狗狗的可愛小動作～',
-            dress:     '🎀 換上全新時尚裝扮，帥氣值與可愛度破表！',
-            default:   '🐾 汪汪！我是你的專屬邊境牧羊犬，今天想和我做什麼呢！'
-        };
-
-        function getThoughtMessage(videoSrc, action) {
-            if (videoSpecificMessages[videoSrc]) {
-                return videoSpecificMessages[videoSrc];
-            }
-            return thoughtMessages[action] || thoughtMessages.default;
+        // 隨機選片 (依主頁邏輯)
+        function getRandomVideo(action) {
+            const list = videos[action] || videos.default;
+            return list[Math.floor(Math.random() * list.length)];
         }
 
-        // 依序輪播影片 (確保每次點擊都換到下一部新影片，按完一輪自動循環)
-        const actionIndices = {};
-        function getNextVideo(action) {
-            const list = videos[action] || videos['default'];
-            if (!list || list.length === 0) return 'dogbreak.mp4';
-            if (actionIndices[action] === undefined) {
-                actionIndices[action] = 0;
-            }
-            const selected = list[actionIndices[action]];
-            actionIndices[action] = (actionIndices[action] + 1) % list.length;
-            return selected;
-        }
-
-        // 心情判斷
-        function getMoodText() {
-            const avg = (pet.health + pet.food + pet.water + pet.clean + pet.love) / 5;
-            if (avg >= 80) return '❤️❤️❤️❤️❤️❤️ 超開心';
-            if (avg >= 60) return '❤️❤️❤️❤️ 開心';
-            if (avg >= 40) return '❤️❤️❤️ 普通';
-            if (avg >= 20) return '⚡⚡ 不太開心';
-            return '⚡⚡⚡⚡⚡ 哭哭難過';
-        }
-
-        // 音效開關切換 (預設開，可點擊隨時切換)
+        // 音效控制
         let isPetMuted = false;
-
         function updatePetSoundUI() {
             const btn = document.getElementById('pet-sound-toggle-btn');
             const icon = document.getElementById('pet-sound-icon');
@@ -932,219 +663,78 @@
                 if (text) text.textContent = '音效開啟 · Sound ON';
             }
         }
-
         window.togglePetSound = function() {
             isPetMuted = !isPetMuted;
-            videoPlayers.forEach(v => {
-                if (v) {
-                    v.muted = isPetMuted;
-                    v.volume = isPetMuted ? 0 : 1.0;
-                }
-            });
-            updatePetSoundUI();
-            if (!isPetMuted) {
-                playCuteSound(659.25, 0.18);
+            if (video) {
+                video.muted = isPetMuted;
+                video.volume = isPetMuted ? 0 : 1.0;
             }
+            updatePetSoundUI();
         };
-
-        // Web Audio 按鈕音效合成 (清脆療癒音階)
-        function playCuteSound(freq = 587.33, dur = 0.15) {
-            if (isPetMuted) return;
-            try {
-                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                if (!AudioContextClass) return;
-                const ctx = new AudioContextClass();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(freq * 1.3, ctx.currentTime + dur);
-                gain.gain.setValueAtTime(0.2, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + dur);
-            } catch (e) {}
-        }
 
         // 更新狀態數值與進度條
         function updateStatus() {
-            const setBar = (fillId, val, textId) => {
-                const fillEl = document.getElementById(fillId);
-                const txt = document.getElementById(textId);
-                if (fillEl) {
-                    fillEl.style.width = Math.max(0, Math.min(100, val)) + '%';
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (el.tagName === 'PROGRESS') {
+                    el.value = val;
+                } else {
+                    el.style.width = Math.max(0, Math.min(100, val)) + '%';
                 }
-                if (txt) txt.innerText = Math.round(val);
+            };
+            const setTxt = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = Math.round(val);
             };
 
-            setBar('health-bar', pet.health, 'health-value');
-            setBar('food-bar', pet.food, 'food-value');
-            setBar('water-bar', pet.water, 'water-value');
-            setBar('clean-bar', pet.clean, 'clean-value');
-            setBar('love-bar', pet.love, 'love-value');
+            setTxt('health-value', pet.health);
+            setTxt('food-value', pet.food);
+            setTxt('water-value', pet.water);
+            setTxt('clean-value', pet.clean);
+            setTxt('love-value', pet.love);
 
+            setVal('health-bar', pet.health);
+            setVal('food-bar', pet.food);
+            setVal('water-bar', pet.water);
+            setVal('clean-bar', pet.clean);
+            setVal('love-bar', pet.love);
+
+            const avg = (pet.health + pet.food + pet.water + pet.clean + pet.love) / 5;
             if (mood) {
-                mood.innerText = getMoodText();
+                if (avg >= 80) mood.textContent = '❤️❤️❤️❤️❤️❤️ 超開心';
+                else if (avg >= 60) mood.textContent = '❤️❤️❤️❤️ 開心';
+                else if (avg >= 40) mood.textContent = '❤️❤️❤️ 普通';
+                else if (avg >= 20) mood.textContent = '⚡⚡ 不太開心';
+                else mood.textContent = '⚡⚡⚡⚡⚡ 哭哭';
             }
         }
 
-        // 動作播放狀態管理 (防止重複點擊或中途被其他動作截斷)
-        let isActionPlaying = false;
-        let activeActionBtn = null;
-        let actionWatchdogTimer = null;
+        // 點擊動作 (按鈕永遠不鎖死，直接換片，立刻響應！)
+        function doAction(action) {
+            if (action === 'feed')       pet.food = Math.min(100, pet.food + 25);
+            if (action === 'water')      pet.water = Math.min(100, pet.water + 25);
+            if (action === 'pet')        pet.love = Math.min(100, pet.love + 15);
+            if (action === 'bath')       pet.clean = 100;
+            if (action === 'clean_poo')  pet.clean = Math.min(100, pet.clean + 40);
+            if (action === 'heal')       { pet.health = 100; pet.isSick = false; }
+            if (action === 'out')        { pet.love = Math.min(100, pet.love + 20); pet.food = Math.max(0, pet.food - 10); }
+            if (action === 'watch')      pet.love = Math.min(100, pet.love + 10);
+            if (action === 'dress')      pet.accessory = (pet.accessory === 'none' ? 'hat' : 'none');
 
-        function resetActionWatchdog() {
-            if (actionWatchdogTimer) {
-                clearTimeout(actionWatchdogTimer);
-                actionWatchdogTimer = null;
-            }
-        }
-
-        function setActionWatchdog() {
-            resetActionWatchdog();
-            // 20 秒安全保護看門狗，避免網路超長阻塞造成介面鎖定
-            actionWatchdogTimer = setTimeout(() => {
-                if (isActionPlaying) {
-                    console.warn('動作播放超時安全保護：自動恢復待機狀態');
-                    finishAction();
-                }
-            }, 20000);
-        }
-
-        function setButtonsState(disabled, currentBtn = null) {
-            const btns = document.querySelectorAll('.action-btn');
-            btns.forEach(btn => {
-                if (disabled) {
-                    if (btn === currentBtn) {
-                        btn.classList.add('is-active');
-                        btn.classList.remove('is-disabled');
-                        btn.disabled = false;
-                    } else {
-                        btn.classList.add('is-disabled');
-                        btn.classList.remove('is-active');
-                        btn.disabled = true;
-                    }
-                } else {
-                    btn.classList.remove('is-active', 'is-disabled');
-                    btn.disabled = false;
-                }
-            });
-        }
-
-        // 動作影片播放完畢後的平滑結尾切換 (零黑屏無縫過渡)
-        function finishAction() {
-            resetActionWatchdog();
-            if (!isActionPlaying) return;
-            isActionPlaying = false;
-            activeActionBtn = null;
-            setButtonsState(false);
-
-            // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
-            const idle = getNextIdleState();
-
-            if (idle.type === 'video') {
-                playMediaVideo({
-                    src: idle.src,
-                    loop: false, // 播完一次後靜止停留於最後一格畫面，不循環
-                    muted: true,
-                    volume: 0,
-                    onEnded: () => {
-                        // 待機影片完整播完一次後靜止停留於最後一格畫面，不循環
-                    },
-                    onError: () => {
-                        console.log('待機播放失敗，切回照片');
-                        showMediaImage('dogstand.png');
-                    }
-                });
-            } else {
-                // 圖一照片模式
-                showMediaImage(idle.src);
+            const nextSrc = getRandomVideo(action);
+            if (video) {
+                video.src = encodeURI(nextSrc);
+                video.muted = isPetMuted;
+                video.volume = isPetMuted ? 0 : 1.0;
+                video.play().catch(e => console.log('play:', e));
             }
 
-            if (thoughtBubble) {
-                thoughtBubble.innerText = idle.msg;
-            }
-        }
-
-        // 點擊 9 顆互動按鈕時執行的動作函式
-        function doAction(action, evt) {
-            // 如果當前動作影片正在播放中，絕對不允許被其他點擊打斷，確保影片完整播完！
-            if (isActionPlaying) return;
-
-            const targetBtn = evt ? evt.currentTarget : null;
-            isActionPlaying = true;
-            activeActionBtn = targetBtn;
-            setButtonsState(true, targetBtn);
-            setActionWatchdog();
-
-            playCuteSound(659.25, 0.18);
-
-            switch (action) {
-                case 'feed':
-                    pet.food = Math.min(100, pet.food + 25);
-                    pet.love = Math.min(100, pet.love + 5);
-                    break;
-                case 'water':
-                    pet.water = Math.min(100, pet.water + 25);
-                    pet.health = Math.min(100, pet.health + 5);
-                    break;
-                case 'pet':
-                    pet.love = Math.min(100, pet.love + 20);
-                    pet.health = Math.min(100, pet.health + 5);
-                    break;
-                case 'bath':
-                    pet.clean = 100;
-                    pet.isDirty = false;
-                    pet.love = Math.min(100, pet.love + 10);
-                    break;
-                case 'clean_poo':
-                    pet.clean = Math.min(100, pet.clean + 40);
-                    pet.health = Math.min(100, pet.health + 10);
-                    break;
-                case 'heal':
-                    pet.health = 100;
-                    pet.isSick = false;
-                    pet.love = Math.min(100, pet.love + 10);
-                    break;
-                case 'out':
-                    pet.love = Math.min(100, pet.love + 25);
-                    pet.clean = Math.max(0, pet.clean - 10);
-                    pet.food = Math.max(0, pet.food - 10);
-                    break;
-                case 'watch':
-                    pet.love = Math.min(100, pet.love + 5);
-                    break;
-                case 'dress':
-                    pet.accessory = pet.accessory === 'none' ? 'bowtie' : pet.accessory === 'bowtie' ? 'vest' : 'none';
-                    pet.love = Math.min(100, pet.love + 15);
-                    break;
+            if (thoughtBubble && videoSpecificMessages[nextSrc]) {
+                thoughtBubble.innerText = videoSpecificMessages[nextSrc];
             }
 
             updateStatus();
-
-            const nextSrc = getNextVideo(action);
-
-            // 根據當前具體播放的影片檔名，精準呈現專屬情境台詞！
-            if (thoughtBubble) {
-                thoughtBubble.innerText = getThoughtMessage(nextSrc, action);
-            }
-
-            // 無縫切換為動作影片並完整播放一次 (loop = false)
-            playMediaVideo({
-                src: nextSrc,
-                loop: false,
-                muted: isPetMuted,
-                volume: isPetMuted ? 0 : 1.0,
-                onEnded: () => {
-                    finishAction();
-                },
-                onError: (e) => {
-                    console.log('播放被阻擋或出錯:', e);
-                    finishAction();
-                }
-            });
         }
 
         // 動態生成 9 顆互動按鈕
@@ -1152,18 +742,17 @@
             const panel = document.getElementById('interaction-panel');
             if (!panel) return;
             panel.innerHTML = '';
-
             const actions = ['feed', 'water', 'pet', 'bath', 'clean_poo', 'heal', 'out', 'watch', 'dress'];
             actions.forEach(action => {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn';
                 btn.innerHTML = buttonLabels[action];
-                btn.onclick = (e) => doAction(action, e);
+                btn.onclick = () => doAction(action);
                 panel.appendChild(btn);
             });
         }
 
-        // 自然狀態隨時間緩慢消耗 (每 15 秒稍微減少飢餓與水分，更有電子寵物感)
+        // 自然消耗
         setInterval(() => {
             pet.food = Math.max(0, pet.food - 1);
             pet.water = Math.max(0, pet.water - 1);
@@ -1173,18 +762,38 @@
             updateStatus();
         }, 15000);
 
-        // 初始化寵物模組
+        // 初始化
         function initPet() {
             createButtons();
             updateStatus();
             updatePetSoundUI();
-            // 初始以圖一照片（精神飽滿站姿）迎接玩家
-            showMediaImage('dogstand.png');
-            if (thoughtBubble) {
-                thoughtBubble.innerText = '🐾 汪汪！我是你的專屬邊境牧羊犬，點擊右方按鈕和我互動喔！';
+
+            if (video) {
+                video.src = encodeURI(getRandomVideo('default'));
+                video.muted = true;
+                video.volume = 0;
+                video.play().catch(e => console.log('init play:', e));
+
+                video.addEventListener('ended', () => {
+                    const defaultSrc = getRandomVideo('default');
+                    video.src = encodeURI(defaultSrc);
+                    video.muted = true;
+                    video.volume = 0;
+                    video.play().catch(e => console.log('idle play:', e));
+                    if (thoughtBubble && videoSpecificMessages[defaultSrc]) {
+                        thoughtBubble.innerText = videoSpecificMessages[defaultSrc];
+                    }
+                });
+
+                // 防卡保護：當音軌長度微差導致漏發 ended 時自動觸發
+                video.addEventListener('timeupdate', () => {
+                    if (video.duration > 0 && video.currentTime >= video.duration - 0.1) {
+                        if (video.paused) {
+                            video.dispatchEvent(new Event('ended'));
+                        }
+                    }
+                });
             }
-            // 啟動全量影片背景預下載系統 (進頁面立即背景全速下載至 RAM，點擊瞬間零延遲秒播零黑屏)
-            startPreloadingAllVideos();
         }
 
         if (document.readyState === 'loading') {
