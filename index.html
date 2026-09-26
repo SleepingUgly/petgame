@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大型電子寵物互動樂園 · Virtual Dog Pet</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang TC", "Microsoft JhengHei", sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #fef5e7 0%, #fde2e4 25%, #e8eaf6 60%, #e0f2fe 100%);
+            background-attachment: fixed;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 16px 40px;
+            color: #333;
+        }
+
+        /* 頂部導航列 */
+        .top-nav {
+            width: 100%;
+            max-width: 920px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .home-btn {
+            background: linear-gradient(135deg, #06b6d4, #0284c7);
+            color: #ffffff;
+            border: none;
+            padding: 9px 22px;
+            border-radius: 9999px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35);
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+
+        .home-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(2, 132, 199, 0.45);
+            filter: brightness(1.05);
+        }
+
+        .breed-badge {
+            background: #ffffff;
+            color: #7c3aed;
+            border: 1.5px solid #e9d5ff;
+            padding: 7px 18px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.08);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .breed-badge .arrow {
+            font-size: 11px;
+            color: #9333ea;
+            margin-left: 2px;
+        }
+
+        /* 標題區塊 */
+        .header-title-box {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .main-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: #6b21a8;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .sub-title {
+            font-size: 14px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        /* 雙欄主遊戲容器 (精緻適中比例，不用過寬) */
+        .game-main-container {
+            width: 100%;
+            max-width: 920px;
+            display: grid;
+            grid-template-columns: 390px 1fr;
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        @media (max-width: 860px) {
+            .game-main-container {
+                grid-template-columns: 1fr;
+                max-width: 440px;
+            }
+        }
+
+        /* 左右兩張白色主卡片 */
+        .game-card {
+            background: #ffffff;
+            border: 2.5px solid #8b5cf6;
+            border-radius: 24px;
+            padding: 18px;
+            box-shadow: 0 12px 36px rgba(139, 92, 246, 0.12);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 左卡：氣泡對話框與影片 */
+        .left-card {
+            gap: 14px;
+        }
+
+        .speech-bubble-container {
+            position: relative;
+        }
+
+        .pet-speech-bubble {
+            background: #ffffff;
+            border: 1.5px solid #d8b4e2;
+            border-radius: 16px;
+            padding: 10px 16px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #581c87;
+            position: relative;
+            box-shadow: 0 4px 14px rgba(139, 92, 246, 0.06);
+            transition: all 0.3s ease;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 對話氣泡的小箭頭 (向上指著上方的影片) */
+        .pet-speech-bubble::after {
+            content: '';
+            position: absolute;
+            top: -9px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 0 8px 9px;
+            border-style: solid;
+            border-color: transparent transparent #ffffff transparent;
+            display: block;
+            width: 0;
+            z-index: 2;
+        }
+
+        .pet-speech-bubble::before {
+            content: '';
+            position: absolute;
+            top: -11px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 0 9px 10px;
+            border-style: solid;
+            border-color: transparent transparent #d8b4e2 transparent;
+            display: block;
+            width: 0;
+            z-index: 1;
+        }
+
+        /* 影片播放框 (鎖定原生 464x688 垂直直式比例，完整展示上下全景不裁切) */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 464 / 688;
+            background: #111827;
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+        }
+
+        #pet-video-player,
+        #pet-image-player {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            border-radius: 18px;
+            background: #111827;
+        }
+
+        /* 右卡：狀態儀表板與按鈕 */
+        .right-card {
+            gap: 16px;
+            justify-content: space-between;
+        }
+
+        /* 狀態儀表板 */
+        .dashboard-box {
+            background: #faf5ff;
+            border: 1.5px dashed #c084fc;
+            border-radius: 18px;
+            padding: 16px 18px;
+        }
+
+        .dashboard-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: #6b21a8;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 18px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+            color: #4b5563;
+        }
+
+        .stat-header .num {
+            font-weight: 700;
+            color: #6b21a8;
+        }
+
+        /* 客製化彩色進度條 */
+        .custom-bar-track {
+            width: 100%;
+            height: 10px;
+            background: #e5e7eb;
+            border-radius: 9999px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .custom-bar-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.4s ease-in-out;
+        }
+
+        .bar-health { background: linear-gradient(90deg, #f87171, #ef4444); }
+        .bar-food   { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+        .bar-water  { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+        .bar-clean  { background: linear-gradient(90deg, #34d399, #10b981); }
+        .bar-love   { background: linear-gradient(90deg, #f472b6, #ec4899); }
+
+        /* 心情列 */
+        .mood-pill-box {
+            background: #ffffff;
+            border: 1.5px solid #fbcfe8;
+            border-radius: 9999px;
+            padding: 7px 16px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #db2777;
+            box-shadow: 0 2px 8px rgba(244, 114, 182, 0.12);
+        }
+
+        #mood-text {
+            color: #e11d48;
+            letter-spacing: 0.5px;
+        }
+
+        /* 互動提示標題 */
+        .interaction-title {
+            text-align: center;
+            font-size: 15px;
+            font-weight: 700;
+            color: #581c87;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin: 4px 0 2px;
+        }
+
+        /* 3x3 互動按鈕網格 */
+        .interaction-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 14px;
+            padding: 12px 6px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(109, 40, 217, 0.28);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2.5px);
+            box-shadow: 0 7px 18px rgba(109, 40, 217, 0.42);
+            filter: brightness(1.08);
+        }
+
+        .action-btn:active {
+            transform: scale(0.96);
+        }
+
+        .action-btn.is-active {
+            box-shadow: 0 0 0 3px #fef08a, 0 8px 24px rgba(124, 58, 237, 0.5) !important;
+            transform: scale(1.02);
+            filter: brightness(1.15);
+            animation: pulseGlow 1.2s infinite;
+        }
+
+        .action-btn:disabled,
+        .action-btn.is-disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            pointer-events: none;
+            filter: grayscale(0.2);
+            transform: none !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .btn-sub {
+            display: block;
+            font-size: 11px;
+            color: #e9d5ff;
+            font-weight: 500;
+            margin-top: 3px;
+            text-transform: lowercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* 音效切換按鈕 */
+        .sound-toggle-area {
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        .pet-sound-toggle-btn {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #ffffff;
+            border: none;
+            padding: 9px 24px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pet-sound-toggle-btn:hover {
+            transform: translateY(-1.5px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.42);
+            filter: brightness(1.06);
+        }
+
+        .pet-sound-toggle-btn.muted {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        /* 裝飾波紋 / 動畫 */
+        @keyframes pulseGlow {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .action-btn:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 頂部導航條 -->
+    <header class="top-nav">
+        <button class="home-btn" onclick="location.reload()">
+            🏠 返回主首頁 (Back to Home)
+        </button>
+        <div class="breed-badge" title="品種切換">
+            🐕 邊境牧羊犬 · 陪伴專區 🐾 <span class="arrow">▼</span>
+        </div>
+    </header>
+
+    <!-- 頂部大標題 -->
+    <div class="header-title-box">
+        <h1 class="main-title">🐕 大型電子寵物互動樂園 🐾</h1>
+    </div>
+
+    <!-- 雙欄主卡片區 -->
+    <main class="game-main-container">
+
+        <!-- 左卡：影片播放器 + 下方對話氣泡 -->
+        <section class="game-card left-card">
+            <div class="video-wrapper">
+                <video id="pet-video-player" autoplay muted playsinline webkit-playsinline preload="auto"></video>
+                <img id="pet-image-player" src="dogstand.png" alt="狗狗待機照片" style="display: none;">
+            </div>
+
+            <div class="speech-bubble-container">
+                <div id="pet-speech-bubble" class="pet-speech-bubble">
+                    🐾 汪汪！我是你的專屬邊境牧羊犬，點擊右方按鈕和我互動喔！
+                </div>
+            </div>
+        </section>
+
+        <!-- 右卡：健康儀表板 + 3x3互動按鈕 + 音效開關 -->
+        <section class="game-card right-card">
+
+            <!-- 狗狗健康狀態儀表板 -->
+            <div class="dashboard-box">
+                <div class="dashboard-title">
+                    📊 狗狗健康狀態儀表板
+                </div>
+
+                <div class="status-grid">
+                    <!-- 健康 -->
+                    <div class="stat-item">
+                        <div class="stat-header">
+                            <span>❤️ 健康 (Health):</span>
+                            <span class="num"><span id="health-value">100</span>/100</span>
+                        </div>
+                        <div class="custom-bar-track">
+                            <div id="health-bar" class="custom-bar-fill bar-health" style="width: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 飽足感 -->
+                    <div class="stat-item">
+                        <div class="stat-header">
+                            <span>🍖 飽足感 (Hunger):</span>
+                            <span class="num"><span id="food-value">80</span>/100</span>
+                        </div>
+                        <div class="custom-bar-track">
+                            <div id="food-bar" class="custom-bar-fill bar-food" style="width: 80%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 水分 -->
+                    <div class="stat-item">
+                        <div class="stat-header">
+                            <span>💧 水分 (Water):</span>
+                            <span class="num"><span id="water-value">80</span>/100</span>
+                        </div>
+                        <div class="custom-bar-track">
+                            <div id="water-bar" class="custom-bar-fill bar-water" style="width: 80%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 衛生 -->
+                    <div class="stat-item">
+                        <div class="stat-header">
+                            <span>🧼 衛生 (Cleanliness):</span>
+                            <span class="num"><span id="clean-value">100</span>/100</span>
+                        </div>
+                        <div class="custom-bar-track">
+                            <div id="clean-bar" class="custom-bar-fill bar-clean" style="width: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 親密度 -->
+                    <div class="stat-item" style="grid-column: span 2;">
+                        <div class="stat-header">
+                            <span>💕 親密度 (Attachment):</span>
+                            <span class="num"><span id="love-value">50</span>/100</span>
+                        </div>
+                        <div class="custom-bar-track">
+                            <div id="love-bar" class="custom-bar-fill bar-love" style="width: 50%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 心情狀態 -->
+                <div class="mood-pill-box">
+                    <span>✨ 心情 (Mood) :</span>
+                    <span id="mood-text">❤️❤️❤️❤️❤️❤️ 超開心</span>
+                </div>
+            </div>
+
+            <!-- 互動按鈕區 -->
+            <div>
+                <div class="interaction-title">
+                    🎮 點擊下方按鈕與狗狗互動
+                </div>
+                <div class="interaction-grid" id="interaction-panel">
+                    <!-- 9 顆紫色按鈕將由 JavaScript 動態生成 -->
+                </div>
+            </div>
+
+            <!-- 音效開關切換按鈕 -->
+            <div class="sound-toggle-area">
+                <button id="pet-sound-toggle-btn" class="pet-sound-toggle-btn" type="button" onclick="togglePetSound()" title="點擊切換音效開關 · Click to Mute / Unmute">
+                    <span id="pet-sound-icon">🔊</span>
+                    <span id="pet-sound-text">音效開啟 · Sound ON</span>
+                </button>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script>
+        // 寵物狀態資料
+        const pet = {
+            health: 100, food: 80, water: 80, clean: 100, love: 50,
+            isSick: false, isDirty: false, accessory: 'none'
+        };
+
+        // DOM 元素
+        const video = document.getElementById('pet-video-player');
+        const imagePlayer = document.getElementById('pet-image-player');
+        const thoughtBubble = document.getElementById('pet-speech-bubble');
+        const mood = document.getElementById('mood-text');
+
+        // 待機狀態交替清單：圖一照片(dogstand.png)、圖二睡覺影片(dogsleep.mp4)、圖三趴地影片(dogbreak.mp4)
+        const idleStates = [
+            { type: 'image', src: 'dogstand.png', msg: '🐾 汪汪！我是你的專屬邊境牧羊犬，點擊右方按鈕和我互動喔！' },
+            { type: 'video', src: 'dogsleep.mp4', msg: '💤 呼嚕嚕... 狗狗好舒服地在小窩裡睡大覺～' },
+            { type: 'video', src: 'dogbreak.mp4', msg: '🐾 趴在地板上放鬆休息中～隨時等你的指令喔！' }
+        ];
+        let idleIndex = 1; // 初始為圖一，第一次完成動作後切到圖二
+
+        function getNextIdleState() {
+            const state = idleStates[idleIndex];
+            idleIndex = (idleIndex + 1) % idleStates.length;
+            return state;
+        }
+
+        function showVideoMode() {
+            if (imagePlayer) imagePlayer.style.display = 'none';
+            if (video) video.style.display = 'block';
+        }
+
+        function showImageMode(src) {
+            if (video) {
+                video.pause();
+                video.style.display = 'none';
+            }
+            if (imagePlayer) {
+                imagePlayer.src = encodeURI(src);
+                imagePlayer.style.display = 'block';
+            }
+        }
+
+        // 所有動作對應的影片檔名清單（完整對應資料夾內的 MP4 影片）
+        const videos = {
+            feed:      ['dogeat.mp4', 'eatwell.mp4', 'dogeat (2).mp4'],
+            water:     ['dogdrink.mp4'],
+            pet:       ['dogpethead.mp4', 'dogpettummy.mp4', 'dogitsback.mp4', 'haha2.mp4'],
+            bath:      ['dogshower1.mp4', 'dogshower2.mp4'],
+            clean_poo: ['dpgpoo.mp4'],
+            heal:      ['dogdoctor.mp4'],
+            out:       ['bigtree.mp4', 'doglongwall.mp4', 'dogwalk.mp4', 'dogdisney.mp4', 'dog101.mp4', 'dogjapan.mp4', 'dogitaly.mp4', 'dogfrench.mp4', 'dogswims.mp4', 'gotospace.mp4', 'spaceelon.mp4', 'dogmars.mp4', 'dogplay1.mp4', 'dogplay.mp4', 'haha1.mp4', 'haha2.mp4', 'T1.mp4'],
+            watch:     ['dogcook.mp4', 'dogsleep.mp4', 'dogbreak.mp4', 'dpgplaycups.mp4', 'dogitsback.mp4', 'dogwithorangecat.mp4', 'dogwithtwocats.mp4', 'dogmouse1.mp4', 'dogsmart1.mp4', 'dogtricks.mp4', 'demis_play.mp4'],
+            dress:     ['dogcollar.mp4', 'newdress1.mp4', 'newdress.mp4', 'withcollar.mp4'],
+            default:   ['dogbreak.mp4']
+        };
+
+        // 9 顆雙語按鈕標籤
+        const buttonLabels = {
+            feed:      '🍖 肚子餓<span class="btn-sub">hungry</span>',
+            water:     '💧 喝水水<span class="btn-sub">thirsty</span>',
+            pet:       '✋ 摸摸<span class="btn-sub">pet me</span>',
+            bath:      '🚿 洗澡澡<span class="btn-sub">shower</span>',
+            clean_poo: '💩 清理便便<span class="btn-sub">poop</span>',
+            heal:      '🩺 看醫生<span class="btn-sub">sick</span>',
+            out:       '🌳 出去玩<span class="btn-sub">go out</span>',
+            watch:     '📷 看監視器<span class="btn-sub">check camera</span>',
+            dress:     '🎀 換裝扮<span class="btn-sub">styles</span>'
+        };
+
+        // 影片專屬情境台詞（100% 精準對應每部影片具體畫面）
+        const videoSpecificMessages = {
+            // 出去玩 (外太空與火星、各國世界景點、戶外運動)
+            'gotospace.mp4':    '🚀 汪！我穿太空衣登上太空站了！俯瞰美麗的藍色地球太震撼啦～',
+            'spaceelon.mp4':    '🌌 漂浮在浩瀚的宇宙星空中漫步，我是最勇敢的太空探險犬！',
+            'dogmars.mp4':      '🔴 成功登陸火星表面！穿著太空衣漫步在紅色星球上，我是第一隻火星探險犬！',
+            'dogfrench.mp4':    '🎨 來到法國巴黎羅浮宮欣賞名畫《蒙娜麗莎》，狗狗也是小小藝術鑑賞家呢！',
+            'bigtree.mp4':      '🎄 哇！好夢幻的巨型聖誕樹，燈光閃閃亮亮的，聖誕快樂汪汪！',
+            'doglongwall.mp4':  '🏯 來到壯麗雄偉的萬里長城漫步打卡，好漢狗狗汪汪叫！',
+            'dog101.mp4':       '🗼 來到台北 101 大樓前打卡拍照，帥氣欣賞美麗天際線！',
+            'dogdisney.mp4':    '🏰 來到夢幻迪士尼城堡前看璀璨煙火，彷彿童話世界一樣美！',
+            'dogjapan.mp4':     '🌸 漫步在日本傳統神社與盛開櫻花樹下，風景超優美～',
+            'dogitaly.mp4':     '🛶 來到浪漫悠閒的義大利水都歐風街道，充滿異國旅行風情！',
+            'dogswims.mp4':     '🏊‍♂️ 噗通跳進清涼水池游泳嬉戲，狗狗的狗爬式身手超敏捷！',
+            'dogwalk.mp4':      '🦮 在陽光明媚的林蔭綠廊散步漫遊，微風吹拂心情好放鬆！',
+            'dogplay1.mp4':     '🎾 到公園大草地上奔跑追逐接球，狗狗玩得超級興奮好快樂！',
+            'dogplay.mp4':      '⚽ 追球小神犬！在草地上追逐飛盤與球球，活力四射超開心！',
+            'haha1.mp4':        '🤸‍♂️ 哈哈！看我超敏捷的空中跳躍特技，帥氣度百分百！',
+            'haha2.mp4':        '🎉 狗狗在大自然草地上開心地又蹦又跳，歡樂無窮撒歡跑！',
+            'T1.mp4':           '🏆 專業敏捷接球訓練大成功！體力與速度都達到滿分狀態！',
+
+            // 餵食美食
+            'dogeat.mp4':       '🍖 好吃好吃！大口大口吃香噴噴肉肉，飽足感大提升！',
+            'eatwell.mp4':      '🍲 哇！今天是五星級營養大餐，狗狗吃得津津有味超滿足！',
+            'dogeat (2).mp4':   '🍖 香噴噴的美味狗糧，每一口都吃得乾乾淨淨～',
+
+            // 喝水
+            'dogdrink.mp4':     '💧 咕嚕咕嚕！大口喝下清涼乾淨的水分，精神飽滿活力充沛！',
+
+            // 摸摸撒嬌
+            'dogpethead.mp4':   '💖 摸摸頭好舒服～狗狗開心瞇瞇眼，舒服地向你撒嬌討摸！',
+            'dogpettummy.mp4':  '🐾 露出軟綿綿的小肚子讓你摸摸，這是最信任你的表現喔！',
+            'dogitsback.mp4':   '✨ 舒服到翻肚肚在地毯上打滾～狗狗開心得尾巴搖不停！',
+
+            // 洗澡護理
+            'dogshower1.mp4':   '🛁 搓搓泡泡洗香香！毛髮洗得乾淨蓬鬆又清爽亮麗！',
+            'dogshower2.mp4':   '🚿 溫水泡泡浴好享受～洗完香噴噴又乾淨，神清氣爽！',
+
+            // 便便衛生
+            'dpgpoo.mp4':       '🧹 便便清理得乾乾淨淨！環境好衛生好舒服～',
+
+            // 看醫生
+            'dogdoctor.mp4':    '🩺 獸醫叔叔細心檢查後，狗狗身體充滿活力，健康百分百！',
+
+            // 看監視器生活紀錄
+            'dogcook.mp4':          '🍳 監視器拍到：狗狗居然戴著廚師帽在廚房忙碌做料理？！太可愛啦！',
+            'dogsleep.mp4':         '📹 監視器畫面：狗狗正捲曲在溫暖小窩裡蓋著毛毯呼呼大睡～',
+            'dogbreak.mp4':         '📹 監視器畫面：狗狗正悠閒地趴在客廳木地板上打瞌睡休息～',
+            'dpgplaycups.mp4':      '🎩 監視器畫面：狗狗正在玩猜杯子找零食遊戲，聰明一下子就猜中！',
+            'dogwithorangecat.mp4': '🐱 監視器畫面：狗狗和橘貓好朋友相親相愛依偎在一起！太融化了～',
+            'dogwithtwocats.mp4':   '🐾 監視器畫面：狗狗正和兩隻貓貓同伴和平共處、一起玩耍！',
+            'dogmouse1.mp4':        '🐭 監視器畫面：狗狗正好奇地盯著小玩具老鼠，歪頭研究中！',
+            'dogsmart1.mp4':        '💡 監視器畫面：高智商邊牧正在解開益智玩具機關，超厲害！',
+            'dogtricks.mp4':        '🤸 監視器畫面：狗狗在客廳展示超高跳躍彈跳特技！',
+            'demis_play.mp4':       '🎾 監視器畫面：狗狗活力滿滿地在玩耍自得其樂！',
+
+            // 換裝扮
+            'dogcollar.mp4':    '✨ 戴上精緻的新項圈，看起來格外精神又有貴族氣質！',
+            'newdress1.mp4':    '👗 換上全新時尚服裝，今天也是街頭最靚的狗狗明星！',
+            'newdress.mp4':     '🎀 帥氣新穿搭亮相！可愛度與時尚感瞬間拉滿！',
+            'withcollar.mp4':   '💎 佩戴上專屬造型項圈，帥氣亮眼，超級神氣！'
+        };
+
+        // 預設動作通用回饋 (備用)
+        const thoughtMessages = {
+            feed:      '🍖 好吃好吃！狗狗吃得津津有味，飽足感大提升！',
+            water:     '💧 咕嚕咕嚕！狗狗補充了乾淨的水分，精神飽滿！',
+            pet:       '💖 摸摸頭好幸福～狗狗舒服地搖尾巴撒嬌中！',
+            bath:      '🛁 洗香香泡泡浴！毛髮變得乾淨蓬鬆又亮麗！',
+            clean_poo: '🧹 清理得乾乾淨淨！環境好衛生好舒服～',
+            heal:      '🩺 獸醫細心檢查後，狗狗身體充滿活力，健康百分百！',
+            out:       '🎾 狗狗出門探險遊玩，超級興奮好快樂！',
+            watch:     '📹 透過寵物監視器看狗狗的可愛小動作～',
+            dress:     '🎀 換上全新時尚裝扮，帥氣值與可愛度破表！',
+            default:   '🐾 汪汪！我是你的專屬邊境牧羊犬，今天想和我做什麼呢！'
+        };
+
+        function getThoughtMessage(videoSrc, action) {
+            if (videoSpecificMessages[videoSrc]) {
+                return videoSpecificMessages[videoSrc];
+            }
+            return thoughtMessages[action] || thoughtMessages.default;
+        }
+
+        // 依序輪播影片 (確保每次點擊都換到下一部新影片，按完一輪自動循環)
+        const actionIndices = {};
+        function getNextVideo(action) {
+            const list = videos[action] || videos['default'];
+            if (!list || list.length === 0) return 'dogbreak.mp4';
+            if (actionIndices[action] === undefined) {
+                actionIndices[action] = 0;
+            }
+            const selected = list[actionIndices[action]];
+            actionIndices[action] = (actionIndices[action] + 1) % list.length;
+            return selected;
+        }
+
+        // 心情判斷
+        function getMoodText() {
+            const avg = (pet.health + pet.food + pet.water + pet.clean + pet.love) / 5;
+            if (avg >= 80) return '❤️❤️❤️❤️❤️❤️ 超開心';
+            if (avg >= 60) return '❤️❤️❤️❤️ 開心';
+            if (avg >= 40) return '❤️❤️❤️ 普通';
+            if (avg >= 20) return '⚡⚡ 不太開心';
+            return '⚡⚡⚡⚡⚡ 哭哭難過';
+        }
+
+        // 音效開關切換 (預設開，可點擊隨時切換)
+        let isPetMuted = false;
+
+        function updatePetSoundUI() {
+            const btn = document.getElementById('pet-sound-toggle-btn');
+            const icon = document.getElementById('pet-sound-icon');
+            const text = document.getElementById('pet-sound-text');
+            if (!btn) return;
+            if (isPetMuted) {
+                btn.classList.add('muted');
+                btn.setAttribute('title', '點擊開啟音效 · Click to Unmute');
+                if (icon) icon.textContent = '🔇';
+                if (text) text.textContent = '已靜音 · Sound OFF';
+            } else {
+                btn.classList.remove('muted');
+                btn.setAttribute('title', '點擊關閉音效 · Click to Mute');
+                if (icon) icon.textContent = '🔊';
+                if (text) text.textContent = '音效開啟 · Sound ON';
+            }
+        }
+
+        window.togglePetSound = function() {
+            isPetMuted = !isPetMuted;
+            if (video) {
+                video.muted = isPetMuted;
+                video.volume = isPetMuted ? 0 : 1.0;
+            }
+            updatePetSoundUI();
+            if (!isPetMuted) {
+                playCuteSound(659.25, 0.18);
+            }
+        };
+
+        // Web Audio 按鈕音效合成 (清脆療癒音階)
+        function playCuteSound(freq = 587.33, dur = 0.15) {
+            if (isPetMuted) return;
+            try {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+                const ctx = new AudioContextClass();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.3, ctx.currentTime + dur);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + dur);
+            } catch (e) {}
+        }
+
+        // 更新狀態數值與進度條
+        function updateStatus() {
+            const setBar = (fillId, val, textId) => {
+                const fillEl = document.getElementById(fillId);
+                const txt = document.getElementById(textId);
+                if (fillEl) {
+                    fillEl.style.width = Math.max(0, Math.min(100, val)) + '%';
+                }
+                if (txt) txt.innerText = Math.round(val);
+            };
+
+            setBar('health-bar', pet.health, 'health-value');
+            setBar('food-bar', pet.food, 'food-value');
+            setBar('water-bar', pet.water, 'water-value');
+            setBar('clean-bar', pet.clean, 'clean-value');
+            setBar('love-bar', pet.love, 'love-value');
+
+            if (mood) {
+                mood.innerText = getMoodText();
+            }
+        }
+
+        // 動作播放狀態管理 (防止重複點擊或中途被其他動作截斷)
+        let isActionPlaying = false;
+        let activeActionBtn = null;
+
+        function setButtonsState(disabled, currentBtn = null) {
+            const btns = document.querySelectorAll('.action-btn');
+            btns.forEach(btn => {
+                if (disabled) {
+                    if (btn === currentBtn) {
+                        btn.classList.add('is-active');
+                        btn.classList.remove('is-disabled');
+                        btn.disabled = false;
+                    } else {
+                        btn.classList.add('is-disabled');
+                        btn.classList.remove('is-active');
+                        btn.disabled = true;
+                    }
+                } else {
+                    btn.classList.remove('is-active', 'is-disabled');
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // 動作影片播放完畢後的平滑結尾切換
+        function finishAction() {
+            if (!isActionPlaying) return;
+            // 延遲 350ms 緩衝，確保最後一個動作畫格被完整觀看，避免視覺突兀截斷
+            setTimeout(() => {
+                isActionPlaying = false;
+                activeActionBtn = null;
+                setButtonsState(false);
+
+                // 輪流交替三種待機狀態（圖一照片、圖二睡覺影片、圖三趴地影片）
+                const idle = getNextIdleState();
+
+                if (idle.type === 'video') {
+                    showVideoMode();
+                    if (video) {
+                        video.muted = isPetMuted;
+                        video.volume = isPetMuted ? 0 : 1.0;
+                        video.src = encodeURI(idle.src);
+                        video.loop = false; // 播完一次後靜止停留於最後一格畫面，不循環
+                        video.play().catch(e => console.log('待機播放失敗:', e));
+                    }
+                } else {
+                    // 圖一照片模式
+                    showImageMode(idle.src);
+                }
+
+                if (thoughtBubble) {
+                    thoughtBubble.innerText = idle.msg;
+                }
+            }, 350);
+        }
+
+        // 點擊 9 顆互動按鈕時執行的動作函式
+        function doAction(action, evt) {
+            // 如果當前動作影片正在播放中，絕對不允許被其他點擊打斷，確保影片完整播完！
+            if (isActionPlaying) return;
+
+            // 確保切換回視訊播放模式
+            showVideoMode();
+
+            const targetBtn = evt ? evt.currentTarget : null;
+            isActionPlaying = true;
+            activeActionBtn = targetBtn;
+            setButtonsState(true, targetBtn);
+
+            playCuteSound(659.25, 0.18);
+
+            switch (action) {
+                case 'feed':
+                    pet.food = Math.min(100, pet.food + 25);
+                    pet.love = Math.min(100, pet.love + 5);
+                    break;
+                case 'water':
+                    pet.water = Math.min(100, pet.water + 25);
+                    pet.health = Math.min(100, pet.health + 5);
+                    break;
+                case 'pet':
+                    pet.love = Math.min(100, pet.love + 20);
+                    pet.health = Math.min(100, pet.health + 5);
+                    break;
+                case 'bath':
+                    pet.clean = 100;
+                    pet.isDirty = false;
+                    pet.love = Math.min(100, pet.love + 10);
+                    break;
+                case 'clean_poo':
+                    pet.clean = Math.min(100, pet.clean + 40);
+                    pet.health = Math.min(100, pet.health + 10);
+                    break;
+                case 'heal':
+                    pet.health = 100;
+                    pet.isSick = false;
+                    pet.love = Math.min(100, pet.love + 10);
+                    break;
+                case 'out':
+                    pet.love = Math.min(100, pet.love + 25);
+                    pet.clean = Math.max(0, pet.clean - 10);
+                    pet.food = Math.max(0, pet.food - 10);
+                    break;
+                case 'watch':
+                    pet.love = Math.min(100, pet.love + 5);
+                    break;
+                case 'dress':
+                    pet.accessory = pet.accessory === 'none' ? 'bowtie' : pet.accessory === 'bowtie' ? 'vest' : 'none';
+                    pet.love = Math.min(100, pet.love + 15);
+                    break;
+            }
+
+            updateStatus();
+
+            // 切換為動作影片並完整播放一次 (loop = false)
+            if (video) {
+                video.loop = false;
+                video.muted = isPetMuted;
+                video.volume = isPetMuted ? 0 : 1.0;
+                const nextSrc = getNextVideo(action);
+                video.src = encodeURI(nextSrc);
+
+                // 根據當前具體播放的影片檔名，精準呈現專屬情境台詞！
+                if (thoughtBubble) {
+                    thoughtBubble.innerText = getThoughtMessage(nextSrc, action);
+                }
+
+                video.play().catch(e => {
+                    console.log('播放被阻擋或出錯:', e);
+                    finishAction();
+                });
+            }
+        }
+
+        // 動態生成 9 顆互動按鈕
+        function createButtons() {
+            const panel = document.getElementById('interaction-panel');
+            if (!panel) return;
+            panel.innerHTML = '';
+
+            const actions = ['feed', 'water', 'pet', 'bath', 'clean_poo', 'heal', 'out', 'watch', 'dress'];
+            actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = 'action-btn';
+                btn.innerHTML = buttonLabels[action];
+                btn.onclick = (e) => doAction(action, e);
+                panel.appendChild(btn);
+            });
+        }
+
+        // 綁定影片結尾與錯誤事件監聽
+        if (video) {
+            video.onended = () => {
+                if (isActionPlaying) {
+                    finishAction();
+                }
+            };
+            video.onerror = () => {
+                console.log('影片載入或播放出錯，自動恢復待機狀態');
+                finishAction();
+            };
+        }
+
+        // 自然狀態隨時間緩慢消耗 (每 15 秒稍微減少飢餓與水分，更有電子寵物感)
+        setInterval(() => {
+            pet.food = Math.max(0, pet.food - 1);
+            pet.water = Math.max(0, pet.water - 1);
+            if (pet.food < 30 || pet.water < 30) {
+                pet.health = Math.max(0, pet.health - 1);
+            }
+            updateStatus();
+        }, 15000);
+
+        // 初始化寵物模組
+        function initPet() {
+            createButtons();
+            updateStatus();
+            updatePetSoundUI();
+            // 初始以圖一照片（精神飽滿站姿）迎接玩家
+            showImageMode('dogstand.png');
+            if (thoughtBubble) {
+                thoughtBubble.innerText = '🐾 汪汪！我是你的專屬邊境牧羊犬，點擊右方按鈕和我互動喔！';
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPet);
+        } else {
+            initPet();
+        }
+    </script>
+</body>
+</html>
