@@ -616,7 +616,7 @@
             } catch (e) {}
         }
 
-        // 高優先級預載入清單 (待機影片與 9 大功能首部影片)
+        // 高優先級預載入清單 (待機影片與高頻動作影片，包含迪士尼、萬里長城等)
         const priorityPreloadList = [
             'dogsleep.mp4',
             'dogbreak.mp4',
@@ -627,14 +627,17 @@
             'dpgpoo.mp4',
             'dogdoctor.mp4',
             'bigtree.mp4',
-            'dogcook.mp4',
-            'dogcollar.mp4',
             'doglongwall.mp4',
             'dogwalk.mp4',
-            'demis_play.mp4',
+            'dogdisney.mp4',
+            'dogcook.mp4',
+            'dogcollar.mp4',
             'dogmars.mp4',
+            'demis_play.mp4',
             'dogpettummy.mp4',
-            'haha1.mp4'
+            'haha1.mp4',
+            'dog101.mp4',
+            'dogjapan.mp4'
         ];
 
         async function startPreloadingAllVideos() {
@@ -661,16 +664,33 @@
             }
         }
 
-        // 零黑屏無縫視訊切換播放核心
+        // 零黑屏無縫視訊切換播放核心 (具備多重守護，徹底杜絕影片末端卡死)
         function playMediaVideo({ src, loop, muted, volume, onEnded, onError }) {
             const nextVideo = videoPlayers[1 - currentVideoIdx];
             const prevEl = currentActiveEl;
 
-            // 清理舊事件監聽
+            // 清理舊事件監聽與定時器
             nextVideo.onended = null;
             nextVideo.onerror = null;
             nextVideo.onplaying = null;
             nextVideo.onloadeddata = null;
+            nextVideo.ontimeupdate = null;
+            nextVideo.onloadedmetadata = null;
+
+            let durationTimeout = null;
+            let endFired = false;
+
+            const triggerEnd = () => {
+                if (endFired) return;
+                endFired = true;
+                if (durationTimeout) {
+                    clearTimeout(durationTimeout);
+                    durationTimeout = null;
+                }
+                nextVideo.ontimeupdate = null;
+                nextVideo.onended = null;
+                if (onEnded) onEnded();
+            };
 
             nextVideo.loop = loop;
             nextVideo.muted = muted;
@@ -695,12 +715,37 @@
             nextVideo.onplaying = switchToNext;
             nextVideo.onloadeddata = switchToNext;
 
+            // 1. 原生 onended 事件
             nextVideo.onended = () => {
-                if (onEnded) onEnded();
+                if (!loop) triggerEnd();
+            };
+
+            // 2. 精準 timeupdate 守護：
+            // AI 生成影片音訊軌與視訊軌常有 0.005 秒極微小誤差，導致瀏覽器漏發 onended。
+            // 當播放到達最後 0.15 秒時，自動觸發圓滿結束過渡！
+            nextVideo.ontimeupdate = () => {
+                if (!loop && nextVideo.duration > 0) {
+                    if (nextVideo.currentTime >= nextVideo.duration - 0.15) {
+                        triggerEnd();
+                    }
+                }
+            };
+
+            // 3. 元數據載入後，以精確影片長度設置超時定時器 (+0.4秒)，絕無卡死死角！
+            nextVideo.onloadedmetadata = () => {
+                if (!loop && nextVideo.duration > 0) {
+                    const maxMs = Math.max(1000, (nextVideo.duration + 0.4) * 1000);
+                    if (durationTimeout) clearTimeout(durationTimeout);
+                    durationTimeout = setTimeout(() => {
+                        console.warn('影片播放到達精確時長上限，自動平滑收尾:', src);
+                        triggerEnd();
+                    }, maxMs);
+                }
             };
 
             nextVideo.onerror = (e) => {
                 console.warn('影片播放錯誤:', src, e);
+                if (durationTimeout) clearTimeout(durationTimeout);
                 if (onError) onError(e);
             };
 
@@ -711,9 +756,11 @@
                     if (!nextVideo.muted) {
                         nextVideo.muted = true;
                         nextVideo.play().catch(e2 => {
+                            if (durationTimeout) clearTimeout(durationTimeout);
                             if (onError) onError(e2);
                         });
                     } else {
+                        if (durationTimeout) clearTimeout(durationTimeout);
                         if (onError) onError(err);
                     }
                 });
