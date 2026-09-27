@@ -449,7 +449,7 @@
         <!-- 左卡：影片播放器 + 下方對話氣泡 -->
         <section class="game-card left-card">
             <div class="video-wrapper">
-                <video id="pet-video-player" playsinline webkit-playsinline autoplay muted poster="dogstand.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: 18px;"></video>
+                <video id="pet-video-player" playsinline webkit-playsinline autoplay muted preload="auto" poster="dogstand.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: 18px;"></video>
             </div>
 
             <div class="speech-bubble-container">
@@ -710,6 +710,76 @@
             }
         }
 
+        // 記憶體 Blob 快取池，杜絕任何網路 Range Request 斷流
+        const blobCache = {};
+        const preloadingSet = new Set();
+
+        // 取得影片的 Blob URL（如果快取已有直接回傳，沒有就以 fetch 載入並存入快取）
+        async function getBlobUrl(src) {
+            if (blobCache[src]) {
+                return blobCache[src];
+            }
+            try {
+                const response = await fetch(encodeURI(src));
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                blobCache[src] = blobUrl;
+                return blobUrl;
+            } catch (err) {
+                console.warn('Blob preload failed, fallback to direct url:', src, err);
+                return encodeURI(src);
+            }
+        }
+
+        // 背景預載（在瀏覽器空閒時陸續將影片預載進 RAM 記憶體）
+        function preloadVideoToMemory(src) {
+            if (blobCache[src] || preloadingSet.has(src)) return;
+            preloadingSet.add(src);
+            fetch(encodeURI(src))
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    blobCache[src] = URL.createObjectURL(blob);
+                })
+                .catch(() => {})
+                .finally(() => preloadingSet.delete(src));
+        }
+
+        // 播放影片核心：先從記憶體抓 Blob，徹底消滅邊播邊載的卡頓
+        let currentPlayToken = 0;
+        async function playVideoSmoothly(src, isDefault = false) {
+            if (!video) return;
+            const thisToken = ++currentPlayToken;
+
+            // 1. 如果已經在記憶體中，0 毫秒極速播放！
+            if (blobCache[src]) {
+                video.src = blobCache[src];
+                video.muted = isDefault ? true : isPetMuted;
+                video.volume = (isDefault || isPetMuted) ? 0 : 1.0;
+                video.play().catch(e => console.log('play blob:', e));
+                return;
+            }
+
+            // 2. 尚未在記憶體中：快速 fetch 抓進記憶體再播（整檔僅約 300KB，瞬間下載完畢且 100% 絕不卡頓）
+            try {
+                const blobUrl = await getBlobUrl(src);
+                if (thisToken !== currentPlayToken) return; // 避免快速連點換片
+                video.src = blobUrl;
+                video.muted = isDefault ? true : isPetMuted;
+                video.volume = (isDefault || isPetMuted) ? 0 : 1.0;
+                video.play().catch(e => console.log('play:', e));
+            } catch (e) {
+                if (thisToken !== currentPlayToken) return;
+                video.src = encodeURI(src);
+                video.muted = isDefault ? true : isPetMuted;
+                video.volume = (isDefault || isPetMuted) ? 0 : 1.0;
+                video.play().catch(err => console.log('fallback play:', err));
+            }
+        }
+
         // 點擊動作 (按鈕永遠不鎖死，直接換片，立刻響應！)
         function doAction(action) {
             if (action === 'feed')       pet.food = Math.min(100, pet.food + 25);
@@ -723,12 +793,7 @@
             if (action === 'dress')      pet.accessory = (pet.accessory === 'none' ? 'hat' : 'none');
 
             const nextSrc = getRandomVideo(action);
-            if (video) {
-                video.src = encodeURI(nextSrc);
-                video.muted = isPetMuted;
-                video.volume = isPetMuted ? 0 : 1.0;
-                video.play().catch(e => console.log('play:', e));
-            }
+            playVideoSmoothly(nextSrc, false);
 
             if (thoughtBubble && videoSpecificMessages[nextSrc]) {
                 thoughtBubble.innerText = videoSpecificMessages[nextSrc];
@@ -769,17 +834,12 @@
             updatePetSoundUI();
 
             if (video) {
-                video.src = encodeURI(getRandomVideo('default'));
-                video.muted = true;
-                video.volume = 0;
-                video.play().catch(e => console.log('init play:', e));
+                const defaultSrc = getRandomVideo('default');
+                playVideoSmoothly(defaultSrc, true);
 
                 video.addEventListener('ended', () => {
                     const defaultSrc = getRandomVideo('default');
-                    video.src = encodeURI(defaultSrc);
-                    video.muted = true;
-                    video.volume = 0;
-                    video.play().catch(e => console.log('idle play:', e));
+                    playVideoSmoothly(defaultSrc, true);
                     if (thoughtBubble && videoSpecificMessages[defaultSrc]) {
                         thoughtBubble.innerText = videoSpecificMessages[defaultSrc];
                     }
@@ -787,12 +847,29 @@
 
                 // 防卡保護：當音軌長度微差導致漏發 ended 時自動觸發
                 video.addEventListener('timeupdate', () => {
-                    if (video.duration > 0 && video.currentTime >= video.duration - 0.1) {
-                        if (video.paused) {
+                    if (video.duration > 0 && video.currentTime >= video.duration - 0.15) {
+                        if (video.ended || video.paused) {
                             video.dispatchEvent(new Event('ended'));
                         }
                     }
                 });
+
+                // 背景依序預載常用短片（每 350ms 預載一部進 RAM，不搶佔首屏頻寬）
+                setTimeout(() => {
+                    const priorityList = [
+                        'dogsleep.mp4', 'dogbreak.mp4', 'dogeat.mp4', 'dogeat (2).mp4',
+                        'dogdrink.mp4', 'dogpethead.mp4', 'dogpettummy.mp4', 'dogshower1.mp4',
+                        'dpgpoo.mp4', 'dogdoctor.mp4'
+                    ];
+                    let idx = 0;
+                    function loadNext() {
+                        if (idx < priorityList.length) {
+                            preloadVideoToMemory(priorityList[idx++]);
+                            setTimeout(loadNext, 350);
+                        }
+                    }
+                    loadNext();
+                }, 800);
             }
         }
 
